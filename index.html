@@ -1,0 +1,3438 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Diwali Society 2D - Global Multiplayer Open World</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Global Zero-Config WebSocket Multiplayer (MQTT over WebSockets) -->
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <style>
+        :root {
+            --hud-opacity: 0.45;
+        }
+        * {
+            user-select: none;
+            -webkit-user-select: none;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #06040d;
+            font-family: 'Inter', sans-serif;
+            touch-action: none;
+        }
+        .font-festive {
+            font-family: 'Fredoka', sans-serif;
+        }
+        canvas#gameCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+        }
+
+        /* Modern Low-Opacity Translucent HUD (Like BGMI / Genshin) */
+        .hud-glass {
+            background: rgba(10, 12, 24, 0.55);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1px solid rgba(251, 191, 36, 0.25);
+            opacity: var(--hud-opacity);
+            transition: opacity 0.22s ease, transform 0.18s ease, border-color 0.2s ease, background-color 0.2s ease;
+        }
+        .hud-glass:hover,
+        .hud-glass:active,
+        .hud-glass:focus-within {
+            opacity: 0.94 !important;
+            border-color: rgba(251, 191, 36, 0.55);
+        }
+
+        /* Ergonomic Touch Action Buttons */
+        .arc-btn {
+            background: rgba(12, 16, 30, 0.48);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            border: 1.5px solid rgba(251, 191, 36, 0.32);
+            opacity: var(--hud-opacity);
+            transition: all 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+        }
+        .arc-btn:hover,
+        .arc-btn:active {
+            opacity: 0.95 !important;
+            transform: scale(0.93);
+            border-color: rgba(251, 191, 36, 0.85);
+        }
+        .arc-btn-highlight {
+            opacity: calc(var(--hud-opacity) + 0.35) !important;
+            border-color: #fbbf24 !important;
+            box-shadow: 0 0 18px rgba(251, 191, 36, 0.65);
+            animation: softPulse 1.5s infinite ease-in-out;
+        }
+
+        @keyframes softPulse {
+            0%, 100% { transform: scale(1); box-shadow: 0 0 12px rgba(251, 191, 36, 0.45); }
+            50% { transform: scale(1.07); box-shadow: 0 0 24px rgba(251, 191, 36, 0.9); }
+        }
+
+        /* Solid Modal Glass (For Shop & Settings when opened) */
+        .modal-glass {
+            background: rgba(12, 10, 24, 0.92);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(251, 191, 36, 0.42);
+            box-shadow: 0 12px 42px rgba(0, 0, 0, 0.8);
+        }
+
+        .hotbar-slot {
+            transition: all 0.16s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .hotbar-slot.active {
+            transform: translateY(-4px) scale(1.06);
+            border-color: #fbbf24;
+            background: rgba(245, 158, 11, 0.32);
+            box-shadow: 0 0 14px rgba(251, 191, 36, 0.45);
+        }
+
+        .hud-hidden .hud-layer {
+            opacity: 0 !important;
+            pointer-events: none !important;
+        }
+
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.4); }
+        ::-webkit-scrollbar-thumb { background: rgba(251, 191, 36, 0.5); border-radius: 9999px; }
+    </style>
+</head>
+<body class="relative w-screen h-screen overflow-hidden text-amber-50">
+
+    <!-- MAIN 2D OPEN-WORLD CANVAS (90%+ Uncluttered Screen) -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- =========================================================
+         TOP-LEFT: ULTRA-COMPACT GLOBAL STATUS & WALLET PILL
+         ========================================================= -->
+    <div class="hud-layer fixed top-2.5 left-2.5 z-20 flex flex-wrap items-center gap-1.5 pointer-events-none">
+        <div class="hud-glass rounded-full px-3 py-1 flex items-center gap-2.5 pointer-events-auto">
+            <!-- Global Live Indicator (Zero-Code Auto-Join) -->
+            <button id="openProfileBtn" class="flex items-center gap-1.5 text-left group" title="Click to change your Name or Kurta Color">
+                <span id="netStatusDot" class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                <span class="font-festive text-xs font-bold tracking-wide text-amber-300 group-hover:underline" id="hudPlayerName">Aarav</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 font-semibold" id="globalOnlineBadge">
+                    🌍 5 Live
+                </span>
+            </button>
+
+            <div class="h-3.5 w-[1px] bg-amber-400/25"></div>
+
+            <!-- Current Zone Badge -->
+            <span id="locationBadge" class="text-[10px] font-semibold text-amber-100/90 hidden sm:inline">
+                🏘️ Society Chowk
+            </span>
+
+            <div class="h-3.5 w-[1px] bg-amber-400/25 hidden sm:block"></div>
+
+            <!-- Shagun Wallet -->
+            <div class="flex items-center gap-1 text-xs font-festive font-bold text-amber-300" title="Shagun Wallet">
+                <span>🪙</span>
+                <span id="coinCountDisplay">₹450</span>
+            </div>
+
+            <!-- Mithai Boxes -->
+            <div class="hidden md:flex items-center gap-1 text-[11px] font-festive font-bold text-pink-300" title="Kaju Katli Gift Boxes">
+                <span>🎁</span>
+                <span id="mithaiBoxDisplay">2</span>
+            </div>
+
+            <!-- Diyas Lit -->
+            <div class="hidden lg:flex items-center gap-1 text-[11px] font-festive font-bold text-orange-300" title="Diyas Lit">
+                <span>🪔</span>
+                <span id="diyaCountDisplay">12/28</span>
+            </div>
+        </div>
+
+        <!-- Minimal Fast-Travel Pills -->
+        <div class="hud-glass rounded-full px-2 py-1 flex items-center gap-1 pointer-events-auto text-[11px]">
+            <button id="tpSocietyBtn" class="px-2 py-0.5 rounded-full hover:bg-amber-500/30 text-amber-200 transition" title="Teleport to Society Wing">🏘️ <span class="hidden md:inline">Society</span></button>
+            <button id="tpBazaarBtn" class="px-2 py-0.5 rounded-full hover:bg-pink-500/30 text-pink-200 transition" title="Teleport to Bazaar Road">🛍️ <span class="hidden md:inline">Bazaar</span></button>
+            <button id="tpChhatBtn" class="px-2 py-0.5 rounded-full hover:bg-purple-500/30 text-purple-200 transition" title="Climb to Society Chhat">🪜 <span class="hidden md:inline">Chhat</span></button>
+            <button id="openShopBtn" class="px-2 py-0.5 rounded-full bg-amber-500/30 hover:bg-amber-500/50 text-amber-200 font-semibold transition" title="Open Bazaar Shop Menu">🏪 <span class="hidden sm:inline">Shop</span></button>
+        </div>
+    </div>
+
+    <!-- =========================================================
+         TOP-RIGHT: COMPACT RADAR MINI-MAP & HUD OPACITY CONTROLS
+         ========================================================= -->
+    <div class="fixed top-2.5 right-2.5 z-20 flex flex-col items-end gap-1.5 pointer-events-none">
+        <!-- Micro Control Bar (Always accessible even if HUD hidden) -->
+        <div class="hud-glass rounded-full px-2 py-1 flex items-center gap-1.5 pointer-events-auto">
+            <!-- Collapsible Chat Trigger -->
+            <button id="toggleChatPopoverBtn" class="w-7 h-7 rounded-full hover:bg-amber-500/25 flex items-center justify-center text-amber-200 text-xs transition" title="Quick Chat & Global Messages">
+                <i class="fa-solid fa-comment-dots"></i>
+            </button>
+
+            <!-- Toggle Radar Mini-Map -->
+            <button id="toggleRadarBtn" class="w-7 h-7 rounded-full hover:bg-amber-500/25 flex items-center justify-center text-amber-300 text-xs transition" title="Toggle Mini-Map Radar [M]">
+                <i class="fa-solid fa-compass"></i>
+            </button>
+
+            <!-- Sound Toggle -->
+            <button id="soundToggleBtn" class="w-7 h-7 rounded-full hover:bg-amber-500/25 flex items-center justify-center text-amber-300 text-xs transition" title="Mute / Unmute Sound">
+                <i id="soundIcon" class="fa-solid fa-volume-high"></i>
+            </button>
+
+            <!-- HUD Opacity & Settings Popover Button -->
+            <button id="toggleHudSettingsBtn" class="px-2 h-7 rounded-full bg-amber-500/20 hover:bg-amber-500/35 border border-amber-400/30 flex items-center gap-1 text-amber-200 text-[11px] font-semibold transition" title="Adjust Button Opacity & Settings">
+                <i class="fa-solid fa-eye text-[10px]"></i>
+                <span id="opacityPercentLabel" class="hidden sm:inline">45%</span>
+            </button>
+
+            <!-- Help Guide -->
+            <button id="helpModalBtn" class="w-7 h-7 rounded-full hover:bg-amber-500/25 flex items-center justify-center text-amber-200 text-xs transition" title="Game Controls">
+                <i class="fa-solid fa-question"></i>
+            </button>
+        </div>
+
+        <!-- HUD Opacity & Visual Settings Popover (Hidden by default) -->
+        <div id="hudSettingsPopover" class="modal-glass rounded-2xl p-3 w-60 hidden pointer-events-auto text-xs space-y-2.5">
+            <div class="flex items-center justify-between border-b border-amber-400/20 pb-1.5">
+                <span class="font-bold text-amber-300 flex items-center gap-1.5"><i class="fa-solid fa-sliders"></i> HUD & Controls</span>
+                <button id="closeHudSettingsBtn" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div>
+                <div class="flex justify-between text-[11px] text-amber-100/80 mb-1">
+                    <span>Button Opacity</span>
+                    <span id="sliderValueText" class="font-mono text-amber-300">45%</span>
+                </div>
+                <input id="hudOpacitySlider" type="range" min="15" max="95" value="45" class="w-full accent-amber-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg">
+            </div>
+            <div class="flex items-center justify-between pt-1">
+                <span class="text-[11px] text-amber-100/80">AI Dost Squad (4)</span>
+                <button id="toggleAiBtn" class="px-2.5 py-1 rounded-lg bg-emerald-600/80 text-white font-bold text-[10px]">
+                    <span id="aiStatusText">ON</span>
+                </button>
+            </div>
+            <div class="flex items-center justify-between">
+                <span class="text-[11px] text-amber-100/80">Lighting & Glow</span>
+                <button id="lightingToggleBtn" class="px-2.5 py-1 rounded-lg bg-amber-500/25 border border-amber-400/40 text-amber-200 font-bold text-[10px]">
+                    <span id="lightingModeText">ULTRA</span>
+                </button>
+            </div>
+            <button id="hideAllHudBtn" class="w-full py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-200 font-semibold text-[11px] border border-amber-400/20">
+                Hide / Show All HUD [Key: Z]
+            </button>
+        </div>
+
+        <!-- Collapsible Quick-Chat Popover (Hidden by default so screen stays clean!) -->
+        <div id="chatPopover" class="modal-glass rounded-2xl p-2.5 w-72 hidden pointer-events-auto space-y-2">
+            <div class="flex items-center justify-between border-b border-amber-400/20 pb-1">
+                <span class="text-[11px] font-bold text-amber-300">💬 Global Street Chat</span>
+                <button id="closeChatPopoverBtn" class="text-slate-400 hover:text-white text-xs"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="grid grid-cols-2 gap-1">
+                <button data-chat="Happy Diwali! Chalo Bazaar me 1000-Wala Ladi lagate hai! 🧨🔥" class="quick-chat-btn text-[10px] bg-amber-500/15 hover:bg-amber-500/35 border border-amber-400/25 text-amber-200 px-2 py-1 rounded-lg truncate text-left">🧨 1000-Wala Ladi!</button>
+                <button data-chat="Oye Scooty pe baitho, Bazaar Road ka chakkar maarte hai! 🛵💨" class="quick-chat-btn text-[10px] bg-cyan-500/15 hover:bg-cyan-500/35 border border-cyan-400/25 text-cyan-200 px-2 py-1 rounded-lg truncate text-left">🛵 Scooty Gedi!</button>
+                <button data-chat="Chhat pe aao sab! 12-Shot Sky-Shot jalate hai! 🎆" class="quick-chat-btn text-[10px] bg-purple-500/15 hover:bg-purple-500/35 border border-purple-400/25 text-purple-200 px-2 py-1 rounded-lg truncate text-left">🪜 Chhat Sky-Shot!</button>
+                <button data-chat="Apna Tapri pe aao गरमा-गरम Chai aur Jalebi khate hai! ☕🥨" class="quick-chat-btn text-[10px] bg-emerald-500/15 hover:bg-emerald-500/35 border border-emerald-400/25 text-emerald-200 px-2 py-1 rounded-lg truncate text-left">☕ Chai & Jalebi!</button>
+            </div>
+            <form id="customChatForm" class="flex items-center gap-1">
+                <input id="customChatInput" type="text" maxlength="55" placeholder="Say to everyone..." class="flex-1 bg-slate-900/90 text-amber-100 placeholder-amber-200/40 text-xs px-2.5 py-1.5 rounded-xl border border-amber-400/30 focus:outline-none focus:border-amber-400">
+                <button type="submit" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs px-3 py-1.5 rounded-xl">
+                    <i class="fa-solid fa-paper-plane"></i>
+                </button>
+            </form>
+        </div>
+
+        <!-- Compact Translucent Radar Mini-Map -->
+        <div id="minimapContainer" class="hud-layer hud-glass rounded-2xl p-1.5 pointer-events-auto hidden sm:flex flex-col items-center gap-0.5">
+            <div class="w-full flex items-center justify-between px-1">
+                <span class="text-[8px] font-bold uppercase tracking-wider text-amber-300/90">Radar (Click TP)</span>
+                <span id="coordsText" class="text-[8px] font-mono text-amber-200/60">1600, 760</span>
+            </div>
+            <canvas id="minimapCanvas" width="136" height="94" class="rounded-xl border border-amber-500/25 bg-slate-950/80 cursor-pointer" title="Click anywhere on Radar to Fast-Travel!"></canvas>
+        </div>
+    </div>
+
+    <!-- =========================================================
+         TOP-CENTER: SUBTLE FLOATING EVENT TOAST
+         ========================================================= -->
+    <div id="eventBanner" class="fixed top-12 left-1/2 -translate-x-1/2 z-30 pointer-events-none transition-all duration-300 opacity-0 -translate-y-2">
+        <div class="hud-glass px-3.5 py-1 rounded-full text-[11px] sm:text-xs font-semibold text-amber-200 flex items-center gap-1.5 shadow-lg border border-amber-400/40" style="opacity: 0.85;">
+            <span id="eventBannerIcon">🎆</span>
+            <span id="eventBannerText">Joined Global Public Server!</span>
+        </div>
+    </div>
+
+    <!-- =========================================================
+         BOTTOM-LEFT: MODERN TRANSLUCENT 360° VIRTUAL JOYSTICK
+         ========================================================= -->
+    <div id="joystickZone" class="hud-layer hud-glass fixed bottom-5 left-5 z-20 w-28 h-28 sm:w-24 sm:h-24 rounded-full flex items-center justify-center pointer-events-auto cursor-grab active:cursor-grabbing" title="Drag to Walk or Drive Scooty">
+        <!-- Inner subtle guide ring -->
+        <div class="w-16 h-16 rounded-full border border-amber-400/20 pointer-events-none flex items-center justify-center">
+            <span class="text-[8px] uppercase tracking-widest text-amber-200/30 font-bold pointer-events-none">MOVE</span>
+        </div>
+        <!-- Thumb Knob -->
+        <div id="joystickKnob" class="absolute w-11 h-11 sm:w-10 sm:h-10 rounded-full bg-amber-400/55 border border-white/60 shadow-md pointer-events-none transition-transform duration-75 flex items-center justify-center">
+            <div class="w-3 h-3 rounded-full bg-white/80"></div>
+        </div>
+    </div>
+
+    <!-- =========================================================
+         BOTTOM-CENTER: ULTRA-SLEEK COMPACT CRACKER HOTBAR (1-7)
+         ========================================================= -->
+    <div class="hud-layer fixed bottom-2.5 left-1/2 -translate-x-1/2 z-20 pointer-events-auto max-w-[92vw]">
+        <div class="hud-glass rounded-2xl px-1.5 py-1 flex items-center gap-1 overflow-x-auto">
+            <!-- Slot 1: Sky Rocket -->
+            <button data-slot="0" class="hotbar-slot active relative w-10 h-11 sm:w-11 sm:h-12 rounded-xl bg-slate-900/50 border border-amber-500/25 flex flex-col items-center justify-center shrink-0">
+                <span class="absolute top-0.5 left-1 text-[8px] font-bold text-amber-300/70">1</span>
+                <span class="text-sm sm:text-base">🚀</span>
+                <span class="text-[8px] font-medium text-amber-100/90 leading-none mt-0.5">Rocket</span>
+                <span id="invCount0" class="absolute -top-1 -right-1 bg-amber-500/90 text-slate-950 font-bold text-[8px] px-1 rounded-full">20</span>
+            </button>
+
+            <!-- Slot 2: Anar -->
+            <button data-slot="1" class="hotbar-slot relative w-10 h-11 sm:w-11 sm:h-12 rounded-xl bg-slate-900/50 border border-amber-500/25 flex flex-col items-center justify-center shrink-0">
+                <span class="absolute top-0.5 left-1 text-[8px] font-bold text-amber-300/70">2</span>
+                <span class="text-sm sm:text-base">🌋</span>
+                <span class="text-[8px] font-medium text-amber-100/90 leading-none mt-0.5">Anar</span>
+                <span id="invCount1" class="absolute -top-1 -right-1 bg-amber-500/90 text-slate-950 font-bold text-[8px] px-1 rounded-full">12</span>
+            </button>
+
+            <!-- Slot 3: Chakri -->
+            <button data-slot="2" class="hotbar-slot relative w-10 h-11 sm:w-11 sm:h-12 rounded-xl bg-slate-900/50 border border-amber-500/25 flex flex-col items-center justify-center shrink-0">
+                <span class="absolute top-0.5 left-1 text-[8px] font-bold text-amber-300/70">3</span>
+                <span class="text-sm sm:text-base">🌀</span>
+                <span class="text-[8px] font-medium text-amber-100/90 leading-none mt-0.5">Chakri</span>
+                <span id="invCount2" class="absolute -top-1 -right-1 bg-amber-500/90 text-slate-950 font-bold text-[8px] px-1 rounded-full">15</span>
+            </button>
+
+            <!-- Slot 4: Sutli Bomb -->
+            <button data-slot="3" class="hotbar-slot relative w-10 h-11 sm:w-11 sm:h-12 rounded-xl bg-slate-900/50 border border-amber-500/25 flex flex-col items-center justify-center shrink-0">
+                <span class="absolute top-0.5 left-1 text-[8px] font-bold text-amber-300/70">4</span>
+                <span class="text-sm sm:text-base">💣</span>
+                <span class="text-[8px] font-medium text-amber-100/90 leading-none mt-0.5">Sutli</span>
+                <span id="invCount3" class="absolute -top-1 -right-1 bg-amber-500/90 text-slate-950 font-bold text-[8px] px-1 rounded-full">10</span>
+            </button>
+
+            <!-- Slot 5: Phuljhari -->
+            <button data-slot="4" class="hotbar-slot relative w-10 h-11 sm:w-11 sm:h-12 rounded-xl bg-slate-900/50 border border-amber-500/25 flex flex-col items-center justify-center shrink-0">
+                <span class="absolute top-0.5 left-1 text-[8px] font-bold text-amber-300/70">5</span>
+                <span class="text-sm sm:text-base">✨</span>
+                <span class="text-[8px] font-medium text-amber-100/90 leading-none mt-0.5">Spark</span>
+                <span id="invCount4" class="absolute -top-1 -right-1 bg-emerald-400/90 text-slate-950 font-bold text-[8px] px-1 rounded-full">∞</span>
+            </button>
+
+            <!-- Slot 6: 12-Shot Sky-Shot -->
+            <button data-slot="5" class="hotbar-slot relative w-10 h-11 sm:w-11 sm:h-12 rounded-xl bg-purple-950/50 border border-purple-400/30 flex flex-col items-center justify-center shrink-0">
+                <span class="absolute top-0.5 left-1 text-[8px] font-bold text-purple-300">6</span>
+                <span class="text-sm sm:text-base">🎆</span>
+                <span class="text-[8px] font-medium text-purple-200 leading-none mt-0.5">12-Shot</span>
+                <span id="invCount5" class="absolute -top-1 -right-1 bg-purple-400 text-slate-950 font-bold text-[8px] px-1 rounded-full">6</span>
+            </button>
+
+            <!-- Slot 7: 1000-Wala Ladi -->
+            <button data-slot="6" class="hotbar-slot relative w-10 h-11 sm:w-11 sm:h-12 rounded-xl bg-red-950/50 border border-red-400/30 flex flex-col items-center justify-center shrink-0">
+                <span class="absolute top-0.5 left-1 text-[8px] font-bold text-red-300">7</span>
+                <span class="text-sm sm:text-base">🧨</span>
+                <span class="text-[8px] font-medium text-red-200 leading-none mt-0.5">Ladi</span>
+                <span id="invCount6" class="absolute -top-1 -right-1 bg-red-500 text-white font-bold text-[8px] px-1 rounded-full">5</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- =========================================================
+         BOTTOM-RIGHT: MODERN ERGONOMIC RIGHT-THUMB ARC CLUSTER
+         ========================================================= -->
+    <div class="hud-layer fixed bottom-4 right-4 z-20 w-40 h-40 pointer-events-none select-none">
+        <!-- Contextual Floating Label above Interact Button -->
+        <div id="interactionPrompt" class="hidden absolute -top-9 right-0 pointer-events-auto">
+            <button id="interactionActionBtn" class="hud-glass px-3 py-1 rounded-full text-[11px] font-bold text-amber-200 border border-amber-400 whitespace-nowrap flex items-center gap-1.5 shadow-lg" style="opacity: 0.9;">
+                <span id="interactionIcon">🚪</span>
+                <span id="interactionText">Enter [E]</span>
+            </button>
+        </div>
+
+        <!-- Arc Satellite 1 (Top-Right): INTERACT / ENTER [E] -->
+        <button id="arcInteractBtn" class="arc-btn pointer-events-auto absolute top-0 right-2 w-12 h-12 rounded-full flex flex-col items-center justify-center text-amber-100" title="Interact / Enter House or Shop [Key: E]">
+            <span id="arcInteractIcon" class="text-base leading-none">✋</span>
+            <span class="text-[8px] font-bold tracking-tighter text-amber-300/90 mt-0.5">USE [E]</span>
+        </button>
+
+        <!-- Arc Satellite 2 (Mid-Upper-Left): RIDE SCOOTY [F] -->
+        <button id="rideScootyBtn" class="arc-btn pointer-events-auto absolute top-5 left-4 w-12 h-12 rounded-full flex flex-col items-center justify-center text-cyan-200" title="Ride / Park Indian Scooty [Key: F]">
+            <span class="text-base leading-none">🛵</span>
+            <span id="scootyBtnLabel" class="text-[8px] font-bold tracking-tighter mt-0.5">RIDE [F]</span>
+        </button>
+
+        <!-- Arc Satellite 3 (Bottom-Left of Arc): HORN [H] -->
+        <button id="hornBtn" class="arc-btn pointer-events-auto absolute bottom-2 left-0 w-11 h-11 rounded-full flex flex-col items-center justify-center text-yellow-200" title="Blow Scooty Horn Pee-Pee! [Key: H]">
+            <span class="text-sm leading-none">📢</span>
+            <span class="text-[8px] font-bold tracking-tighter mt-0.5">HORN</span>
+        </button>
+
+        <!-- Arc Satellite 4 (Small Top-Left): FANOOS LANTERN [K] -->
+        <button id="releaseKandilBtn" class="arc-btn pointer-events-auto absolute top-0 left-16 w-9 h-9 rounded-full flex items-center justify-center text-orange-200 text-xs" title="Release Sky Lantern (Fanoos) [Key: K]">
+            🏮
+        </button>
+
+        <!-- PRIMARY THUMB BUTTON (Bottom-Right Corner): FIRE CRACKER [SPACE / CLICK] -->
+        <button id="quickFireBtn" class="arc-btn pointer-events-auto absolute bottom-1 right-1 w-20 h-20 rounded-full bg-gradient-to-br from-orange-500/60 to-red-600/60 border-2 border-amber-300/70 flex flex-col items-center justify-center text-white shadow-2xl" title="Light Selected Patakha! [Space / Click]">
+            <span class="text-2xl leading-none drop-shadow">🔥</span>
+            <span class="font-festive font-bold text-[10px] tracking-wider text-amber-100 mt-1">JALAO!</span>
+        </button>
+    </div>
+
+    <!-- =========================================================
+         DIWALI MAIN BAZAAR MULTI-SHOP MODAL (4 Interactive Shops)
+         ========================================================= -->
+    <div id="shopModal" class="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-3">
+        <div class="modal-glass rounded-3xl max-w-lg w-full p-4 sm:p-5 border border-amber-400/50 shadow-2xl">
+            <div class="flex items-center justify-between border-b border-amber-400/20 pb-3 mb-3">
+                <div class="flex items-center gap-2.5">
+                    <span class="text-3xl">🛍️</span>
+                    <div>
+                        <h2 id="shopModalTitle" class="font-festive text-lg sm:text-xl font-bold text-amber-300">Diwali Main Bazaar Hub</h2>
+                        <p class="text-[11px] text-amber-100/70">Patakhe, Garma-Garam Jalebi, Masala Chai & Scooty Neon</p>
+                    </div>
+                </div>
+                <button id="closeShopModalBtn" class="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-amber-200 flex items-center justify-center">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Shop Category Tabs -->
+            <div class="grid grid-cols-4 gap-1.5 mb-3">
+                <button data-shoptab="patakha" class="shop-tab-btn bg-amber-500 text-slate-950 font-bold text-xs py-2 rounded-xl flex items-center justify-center gap-1 transition">
+                    <span>🧨</span><span>Patakha</span>
+                </button>
+                <button data-shoptab="mithai" class="shop-tab-btn bg-slate-800/90 text-amber-200 font-semibold text-xs py-2 rounded-xl flex items-center justify-center gap-1 transition">
+                    <span>🍬</span><span>Mithai</span>
+                </button>
+                <button data-shoptab="chai" class="shop-tab-btn bg-slate-800/90 text-amber-200 font-semibold text-xs py-2 rounded-xl flex items-center justify-center gap-1 transition">
+                    <span>☕</span><span>Chai Tapri</span>
+                </button>
+                <button data-shoptab="decor" class="shop-tab-btn bg-slate-800/90 text-amber-200 font-semibold text-xs py-2 rounded-xl flex items-center justify-center gap-1 transition">
+                    <span>🏮</span><span>Decor/Neon</span>
+                </button>
+            </div>
+
+            <div class="flex items-center justify-between bg-amber-950/50 border border-amber-500/30 rounded-2xl px-3.5 py-2 mb-3">
+                <span class="text-xs text-amber-200">Your Shagun Wallet:</span>
+                <span id="shopCoinBalance" class="font-festive font-bold text-base text-amber-300">🪙 ₹450</span>
+            </div>
+
+            <!-- TAB 1: LAXMI PATAKHA BHANDAR -->
+            <div id="shopTab_patakha" class="shop-tab-content space-y-2 max-h-64 overflow-y-auto pr-1">
+                <div class="flex items-center justify-between bg-slate-900/80 border border-amber-500/20 p-2.5 rounded-2xl">
+                    <div class="flex items-center gap-2.5">
+                        <span class="text-2xl">🚀</span>
+                        <div>
+                            <div class="font-bold text-xs sm:text-sm text-amber-200">Sky Bottle Rockets (x12)</div>
+                            <div class="text-[10px] text-slate-400">Whistling rockets to aim down the road or at houses</div>
+                        </div>
+                    </div>
+                    <button data-buy="0" data-amount="12" data-cost="40" class="buy-item-btn bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs px-3 py-1.5 rounded-xl">₹40</button>
+                </div>
+
+                <div class="flex items-center justify-between bg-slate-900/80 border border-amber-500/20 p-2.5 rounded-2xl">
+                    <div class="flex items-center gap-2.5">
+                        <span class="text-2xl">🌋</span>
+                        <div>
+                            <div class="font-bold text-xs sm:text-sm text-amber-200">Golden Anar & Chakri Combo (x8 each)</div>
+                            <div class="text-[10px] text-slate-400">Fountain flower pots + neon ground spinners</div>
+                        </div>
+                    </div>
+                    <button data-buy="combo_ac" data-amount="8" data-cost="45" class="buy-item-btn bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs px-3 py-1.5 rounded-xl">₹45</button>
+                </div>
+
+                <div class="flex items-center justify-between bg-slate-900/80 border border-amber-500/20 p-2.5 rounded-2xl">
+                    <div class="flex items-center gap-2.5">
+                        <span class="text-2xl">💣</span>
+                        <div>
+                            <div class="font-bold text-xs sm:text-sm text-amber-200">VIP Sutli Bomb Box (x6)</div>
+                            <div class="text-[10px] text-slate-400">3-sec countdown, huge shockwave & camera shake</div>
+                        </div>
+                    </div>
+                    <button data-buy="3" data-amount="6" data-cost="50" class="buy-item-btn bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs px-3 py-1.5 rounded-xl">₹50</button>
+                </div>
+
+                <div class="flex items-center justify-between bg-purple-950/60 border border-purple-400/40 p-2.5 rounded-2xl">
+                    <div class="flex items-center gap-2.5">
+                        <span class="text-2xl">🎆</span>
+                        <div>
+                            <div class="font-bold text-xs sm:text-sm text-purple-200">12-Shot Sky-Shot Repeater (x4)</div>
+                            <div class="text-[10px] text-purple-300/80">Fires 12 whistling multi-color aerial shells into the sky!</div>
+                        </div>
+                    </div>
+                    <button data-buy="5" data-amount="4" data-cost="70" class="buy-item-btn bg-purple-400 hover:bg-purple-300 text-slate-950 font-bold text-xs px-3 py-1.5 rounded-xl">₹70</button>
+                </div>
+
+                <div class="flex items-center justify-between bg-red-950/60 border border-red-400/40 p-2.5 rounded-2xl">
+                    <div class="flex items-center gap-2.5">
+                        <span class="text-2xl">🧨</span>
+                        <div>
+                            <div class="font-bold text-xs sm:text-sm text-red-200">1000-Wala Garland Ladi (x4) [Key 7]</div>
+                            <div class="text-[10px] text-red-300/80">Unrolls a 28-blast rapid chain-reaction cracker strip!</div>
+                        </div>
+                    </div>
+                    <button data-buy="6" data-amount="4" data-cost="80" class="buy-item-btn bg-red-500 hover:bg-red-400 text-white font-bold text-xs px-3 py-1.5 rounded-xl">₹80</button>
+                </div>
+
+                <div class="flex items-center justify-between bg-gradient-to-r from-emerald-950/80 to-teal-900/60 border border-emerald-400/40 p-2.5 rounded-2xl">
+                    <div class="flex items-center gap-2.5">
+                        <span class="text-2xl">🎁</span>
+                        <div>
+                            <div class="font-bold text-xs sm:text-sm text-emerald-200">Bumper Diwali Hamper (FREE)</div>
+                            <div class="text-[10px] text-emerald-300/80">Refills ALL 7 crackers + ₹150 Shagun Bonus!</div>
+                        </div>
+                    </div>
+                    <button id="claimFreeComboBtn" class="bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-bold text-xs px-3 py-1.5 rounded-xl">FREE</button>
+                </div>
+            </div>
+
+            <!-- TAB 2: RAJWADI MITHAI & FARSAN GHAR -->
+            <div id="shopTab_mithai" class="shop-tab-content hidden space-y-2.5 max-h-64 overflow-y-auto pr-1">
+                <div class="flex items-center justify-between bg-slate-900/80 border border-pink-400/30 p-3 rounded-2xl">
+                    <div class="flex items-center gap-3">
+                        <span class="text-2xl">🎁</span>
+                        <div>
+                            <div class="font-bold text-sm text-pink-200">Royal Kaju Katli Gift Box (+2 Boxes)</div>
+                            <div class="text-[11px] text-slate-300">Gift inside any Society House for ₹120 Double Shagun!</div>
+                        </div>
+                    </div>
+                    <button id="buyMithaiBoxBtn" class="bg-pink-500 hover:bg-pink-400 text-slate-950 font-bold text-xs px-3 py-2 rounded-xl">Buy ₹40</button>
+                </div>
+
+                <div class="flex items-center justify-between bg-slate-900/80 border border-amber-400/30 p-3 rounded-2xl">
+                    <div class="flex items-center gap-3">
+                        <span class="text-2xl">🥨</span>
+                        <div>
+                            <div class="font-bold text-sm text-amber-200">Garma-Garam Jalebi-Fafda Plate</div>
+                            <div class="text-[11px] text-slate-300">Gives 1.45x Super Walking Speed for 90 seconds!</div>
+                        </div>
+                    </div>
+                    <button id="buyJalebiBtn" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs px-3 py-2 rounded-xl">Eat ₹25</button>
+                </div>
+            </div>
+
+            <!-- TAB 3: APNA CHAI & COLD-DRINK TAPRI -->
+            <div id="shopTab_chai" class="shop-tab-content hidden space-y-2.5 max-h-64 overflow-y-auto pr-1">
+                <div class="flex items-center justify-between bg-slate-900/80 border border-orange-400/30 p-3 rounded-2xl">
+                    <div class="flex items-center gap-3">
+                        <span class="text-2xl">☕</span>
+                        <div>
+                            <div class="font-bold text-sm text-orange-200">Cutting Masala Chai with Dost Squad</div>
+                            <div class="text-[11px] text-slate-300">Calls all AI Friends to the Tapri & gives +₹50 Shagun!</div>
+                        </div>
+                    </div>
+                    <button id="drinkChaiBtn" class="bg-orange-400 hover:bg-orange-300 text-slate-950 font-bold text-xs px-3 py-2 rounded-xl">Drink FREE</button>
+                </div>
+
+                <div class="flex items-center justify-between bg-slate-900/80 border border-cyan-400/30 p-3 rounded-2xl">
+                    <div class="flex items-center gap-3">
+                        <span class="text-2xl">🥤</span>
+                        <div>
+                            <div class="font-bold text-sm text-cyan-200">Chilled Masala Goti Soda</div>
+                            <div class="text-[11px] text-slate-300">Instant celebratory firework burst around you!</div>
+                        </div>
+                    </div>
+                    <button id="drinkSodaBtn" class="bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-bold text-xs px-3 py-2 rounded-xl">Pop ₹15</button>
+                </div>
+            </div>
+
+            <!-- TAB 4: ROSHNI DECOR & SCOOTY NEON -->
+            <div id="shopTab_decor" class="shop-tab-content hidden space-y-2.5 max-h-64 overflow-y-auto pr-1">
+                <div class="bg-slate-900/80 border border-cyan-400/30 p-3 rounded-2xl">
+                    <div class="font-bold text-sm text-cyan-200 mb-1">🛵 Scooty Neon Underglow Color</div>
+                    <p class="text-[11px] text-slate-400 mb-2">Choose the real-time neon reflection color under your Scooty:</p>
+                    <div class="flex items-center gap-2">
+                        <button data-neon="#06b6d4" class="scooty-neon-btn px-3 py-1 rounded-lg bg-cyan-500 text-slate-950 font-bold text-xs">Cyan</button>
+                        <button data-neon="#ec4899" class="scooty-neon-btn px-3 py-1 rounded-lg bg-pink-500 text-white font-bold text-xs">Pink</button>
+                        <button data-neon="#10b981" class="scooty-neon-btn px-3 py-1 rounded-lg bg-emerald-500 text-slate-950 font-bold text-xs">Emerald</button>
+                        <button data-neon="#a855f7" class="scooty-neon-btn px-3 py-1 rounded-lg bg-purple-500 text-white font-bold text-xs">Purple</button>
+                        <button data-neon="#f59e0b" class="scooty-neon-btn px-3 py-1 rounded-lg bg-amber-500 text-slate-950 font-bold text-xs">Gold</button>
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-between bg-slate-900/80 border border-amber-400/30 p-3 rounded-2xl">
+                    <div class="flex items-center gap-3">
+                        <span class="text-2xl">🏮</span>
+                        <div>
+                            <div class="font-bold text-sm text-amber-200">Launch 5 Floating Sky Lanterns (Fanoos)</div>
+                            <div class="text-[11px] text-slate-300">Releases glowing paper lanterns that drift across the night sky</div>
+                        </div>
+                    </div>
+                    <button id="launch5FanoosBtn" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs px-3 py-2 rounded-xl">Launch FREE</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- =========================================================
+         ZERO-CODE GLOBAL PLAYER PROFILE MODAL (Name & Kurta Color Only)
+         ========================================================= -->
+    <div id="profileModal" class="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="modal-glass rounded-3xl max-w-sm w-full p-5 border border-amber-400/50 shadow-2xl">
+            <div class="flex items-center justify-between border-b border-amber-400/20 pb-3 mb-4">
+                <div class="flex items-center gap-2">
+                    <span class="text-2xl">🌍</span>
+                    <div>
+                        <h2 class="font-festive text-lg font-bold text-amber-300">Global Public Server</h2>
+                        <p class="text-[11px] text-emerald-300">Zero Code Needed • Everyone Joins Automatically!</p>
+                    </div>
+                </div>
+                <button id="closeProfileModalBtn" class="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-amber-200 flex items-center justify-center">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="space-y-3.5">
+                <div>
+                    <label class="block text-xs font-semibold text-amber-200 mb-1">Your Display Name</label>
+                    <input id="playerNameInput" type="text" maxlength="16" value="Aarav" class="w-full bg-slate-900 border border-amber-400/40 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-400">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-amber-200 mb-1.5">Festive Kurta Color</label>
+                    <div class="flex items-center gap-2.5">
+                        <button data-color="#f59e0b" class="color-swatch w-8 h-8 rounded-full bg-amber-500 border-2 border-white"></button>
+                        <button data-color="#ef4444" class="color-swatch w-8 h-8 rounded-full bg-red-500 border-2 border-transparent"></button>
+                        <button data-color="#10b981" class="color-swatch w-8 h-8 rounded-full bg-emerald-500 border-2 border-transparent"></button>
+                        <button data-color="#3b82f6" class="color-swatch w-8 h-8 rounded-full bg-blue-500 border-2 border-transparent"></button>
+                        <button data-color="#ec4899" class="color-swatch w-8 h-8 rounded-full bg-pink-500 border-2 border-transparent"></button>
+                        <button data-color="#a855f7" class="color-swatch w-8 h-8 rounded-full bg-purple-500 border-2 border-transparent"></button>
+                    </div>
+                </div>
+
+                <div class="bg-emerald-950/40 border border-emerald-500/30 rounded-xl p-2.5 text-[11px] text-emerald-200 flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping shrink-0"></span>
+                    <span id="globalConnectionDetail">Connected to Global Shanti Society Server (No Room Code Required). Share the link and play!</span>
+                </div>
+
+                <button id="saveProfileBtn" class="w-full bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-slate-950 font-festive font-bold text-sm py-2.5 rounded-xl shadow-lg transition">
+                    Save & Continue Playing
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- =========================================================
+         HELP / CONTROLS MODAL
+         ========================================================= -->
+    <div id="helpModal" class="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="modal-glass rounded-3xl max-w-lg w-full p-5 border border-amber-400/50 shadow-2xl">
+            <div class="flex items-center justify-between border-b border-amber-400/20 pb-3 mb-3">
+                <h2 class="font-festive text-xl font-bold text-amber-300">🪔 Shanti Society Global Guide</h2>
+                <button id="closeHelpModalBtn" class="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-amber-200 flex items-center justify-center">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="space-y-2 text-xs sm:text-sm text-amber-100/90">
+                <p>🌍 <strong>Zero-Code Global Multiplayer:</strong> Anyone who opens your website link anywhere in the world joins the same Shanti Society & Bazaar road automatically—no room codes needed!</p>
+                <p>👁️ <strong>Low-Opacity Clean Screen:</strong> Click the <strong>👁️ 45%</strong> button in the top-right to adjust button transparency or press <kbd class="bg-slate-800 px-1.5 py-0.5 rounded border border-amber-400/40">Z</kbd> to hide all buttons for a cinematic view.</p>
+                <p>🛵 <strong>Drive Indian Scooty (`F` & `H`):</strong> Tap the <strong>🛵 RIDE</strong> button or press <kbd class="bg-slate-800 px-1.5 py-0.5 rounded border border-amber-400/40">F</kbd> to ride your Scooty with LED headlights & neon underglow! Tap <strong>📢 HORN</strong> (<kbd class="bg-slate-800 px-1 rounded">H</kbd>) for *"Pee-Pee!"*</p>
+                <p>🧨 <strong>7 Realistic Patakhe (`1-7` Keys):</strong> Rocket, Anar, Chakri, Sutli Bomb, Phuljhari, <strong>12-Shot Sky-Shot</strong>, and <strong>1000-Wala Garland Ladi</strong>.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- =========================================================
+         GAME ENGINE + GLOBAL PUBLIC MULTIPLAYER SCRIPT
+         ========================================================= -->
+    <script>
+        /**************************************************************
+         * 1. WEB AUDIO SYNTHESIZER (Rockets, Ladi, Scooty Horn, Boom)
+         **************************************************************/
+        class SoundFX {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+            }
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    if (AudioCtx) this.ctx = new AudioCtx();
+                }
+                if (this.ctx && this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+            playRocketWhistle() {
+                if (this.muted) return;
+                this.init();
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(520, now);
+                osc.frequency.exponentialRampToValueAtTime(2050, now + 0.42);
+                gain.gain.setValueAtTime(0.01, now);
+                gain.gain.linearRampToValueAtTime(0.12, now + 0.07);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.46);
+            }
+            playBoom(intensity = 1.0) {
+                if (this.muted) return;
+                this.init();
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const duration = Math.min(0.8, 0.45 * intensity);
+                const bufferSize = Math.floor(this.ctx.sampleRate * duration);
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 1.7);
+                }
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buffer;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(intensity > 1.2 ? 400 : 950, now);
+                filter.frequency.exponentialRampToValueAtTime(75, now + duration);
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(Math.min(0.42, 0.24 * intensity), now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+                noise.start(now);
+            }
+            playCrackle() {
+                if (this.muted) return;
+                this.init();
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const bufferSize = Math.floor(this.ctx.sampleRate * 0.08);
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+                }
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buffer;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.setValueAtTime(2400 + Math.random() * 1600, now);
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0.05, now);
+                gain.gain.exponentialRampToValueAtTime(0.002, now + 0.08);
+
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+                noise.start(now);
+            }
+            playScootyHorn() {
+                if (this.muted) return;
+                this.init();
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                [0, 0.16].forEach(offset => {
+                    const osc1 = this.ctx.createOscillator();
+                    const osc2 = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc1.type = 'sawtooth';
+                    osc2.type = 'square';
+                    osc1.frequency.setValueAtTime(440, now + offset);
+                    osc2.frequency.setValueAtTime(554.37, now + offset);
+                    gain.gain.setValueAtTime(0.1, now + offset);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.12);
+                    osc1.connect(gain);
+                    osc2.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc1.start(now + offset);
+                    osc2.start(now + offset);
+                    osc1.stop(now + offset + 0.13);
+                    osc2.stop(now + offset + 0.13);
+                });
+            }
+            playChime() {
+                if (this.muted) return;
+                this.init();
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                [523.25, 659.25, 783.99, 1046.5].forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, now + idx * 0.055);
+                    gain.gain.setValueAtTime(0.08, now + idx * 0.055);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.055 + 0.22);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + idx * 0.055);
+                    osc.stop(now + idx * 0.055 + 0.24);
+                });
+            }
+        }
+        const sfx = new SoundFX();
+
+        /**************************************************************
+         * 2. MASSIVE 3200x2200 OPEN WORLD MAP CONFIGURATION
+         **************************************************************/
+        const WORLD = {
+            width: 3200,
+            height: 2200,
+            societyRoadY: 640,
+            societyRoadH: 230,
+            bazaarRoadY: 1460,
+            bazaarRoadH: 280,
+            mainAveX: 1480,
+            mainAveW: 240
+        };
+
+        const HOUSES = [
+            {
+                id: 'patel_villa',
+                name: 'Patel Villa (A-101)',
+                owner: 'Patel Kaku & Baa',
+                greeting: 'Kem Cho! Aavo beta, Kaju Katli ane Garma-Garam Ghari khao! Shubh Deepavali! 🍬🪔',
+                x: 240, y: 190, w: 420, h: 280,
+                roofColor: '#7c2d12', wallColor: '#451a03', trimColor: '#f59e0b',
+                doorX: 450, doorY: 470,
+                rangoliColor1: '#ec4899', rangoliColor2: '#fbbf24',
+                interiorFloor: '#3b1d11', interiorWall: '#78350f'
+            },
+            {
+                id: 'sharma_nivas',
+                name: 'Sharma Nivas (A-102)',
+                owner: 'Sharma Ji & Aunty',
+                greeting: 'Arre aao beta! Bas humare ghar ki khidki aur chhat pe Rocket mat marna! 😂🍬',
+                x: 840, y: 190, w: 430, h: 280,
+                roofColor: '#1e3a8a', wallColor: '#172554', trimColor: '#38bdf8',
+                doorX: 1055, doorY: 470,
+                rangoliColor1: '#38bdf8', rangoliColor2: '#f43f5e',
+                interiorFloor: '#1e293b', interiorWall: '#1e3a8a'
+            },
+            {
+                id: 'verma_house',
+                name: 'Verma Mansion (B-201)',
+                owner: 'Verma Bhaiya & Bhabhi',
+                greeting: 'Happy Diwali dost! Humne poore ghar aur chhat pe 101 diye jalaye hain! 🪔✨',
+                x: 1920, y: 190, w: 420, h: 280,
+                roofColor: '#065f46', wallColor: '#064e3b', trimColor: '#34d399',
+                doorX: 2130, doorY: 470,
+                rangoliColor1: '#10b981', rangoliColor2: '#fde047',
+                interiorFloor: '#132a23', interiorWall: '#065f46'
+            },
+            {
+                id: 'clubhouse',
+                name: 'Shanti Society Clubhouse',
+                owner: 'Secretary Bhide & Committee',
+                greeting: 'Shanti Society ke sabhi members ko Diwali Mela 2026 ki hardik shubhkamnaye! 🎉',
+                x: 2500, y: 190, w: 450, h: 280,
+                roofColor: '#581c87', wallColor: '#3b0764', trimColor: '#c084fc',
+                doorX: 2725, doorY: 470,
+                rangoliColor1: '#a855f7', rangoliColor2: '#fb923c',
+                interiorFloor: '#2e1045', interiorWall: '#581c87'
+            }
+        ];
+
+        const CHHAT_STAIRS = {
+            x: 1330, y: 490, w: 110, h: 90,
+            interactX: 1385, interactY: 595
+        };
+
+        const BAZAAR_SHOPS = [
+            {
+                id: 'shop_patakha',
+                tab: 'patakha',
+                name: 'LAXMI PATAKHA BHANDAR',
+                subtitle: '1000-Wala Ladi • Sky-Shots • Rockets',
+                icon: '🧨',
+                x: 220, y: 1120, w: 460, h: 220,
+                interactX: 450, interactY: 1375,
+                wallColor: '#450a0a', roofColor: '#991b1b', neonColor: '#f59e0b', awning1: '#ef4444', awning2: '#fde047'
+            },
+            {
+                id: 'shop_mithai',
+                tab: 'mithai',
+                name: 'RAJWADI MITHAI & FARSAN',
+                subtitle: 'Pure Ghee Kaju Katli • Jalebi-Fafda',
+                icon: '🍬',
+                x: 840, y: 1120, w: 460, h: 220,
+                interactX: 1070, interactY: 1375,
+                wallColor: '#500724', roofColor: '#9d174d', neonColor: '#ec4899', awning1: '#ec4899', awning2: '#fef08a'
+            },
+            {
+                id: 'shop_chai',
+                tab: 'chai',
+                name: 'APNA CHAI & SODA TAPRI',
+                subtitle: 'Cutting Masala Chai • Goti Soda Adda',
+                icon: '☕',
+                x: 1900, y: 1120, w: 440, h: 220,
+                interactX: 2120, interactY: 1375,
+                wallColor: '#064e3b', roofColor: '#047857', neonColor: '#10b981', awning1: '#10b981', awning2: '#ffffff'
+            },
+            {
+                id: 'shop_decor',
+                tab: 'decor',
+                name: 'ROSHNI KANDIL & NEON HUB',
+                subtitle: 'Akash Kandil • Scooty Underglow LED',
+                icon: '🏮',
+                x: 2480, y: 1120, w: 460, h: 220,
+                interactX: 2710, interactY: 1375,
+                wallColor: '#2e1065', roofColor: '#5b21b6', neonColor: '#a855f7', awning1: '#a855f7', awning2: '#38bdf8'
+            }
+        ];
+
+        const STREET_BILLBOARDS = [
+            {
+                x: 320, y: 940, w: 320, h: 95,
+                bg1: '#7c2d12', bg2: '#ea580c', border: '#fde047',
+                tag: 'DHAMAKA OFFER',
+                title: 'SHUBH DEEPAVALI SALE - 50% OFF!',
+                sub: 'Patel Electronics & Mobile Hub • Zero Downpayment'
+            },
+            {
+                x: 910, y: 940, w: 340, h: 95,
+                bg1: '#1e1b4b', bg2: '#4338ca', border: '#38bdf8',
+                tag: 'SHANTI SOCIETY NOTICE',
+                title: '⚠️ YAHAN SUTLI BOMB PHODNA MANA HAI',
+                sub: 'Hukam Se: Sharma Ji & Secretary Bhide (Fine: ₹500)'
+            },
+            {
+                x: 1930, y: 940, w: 340, h: 95,
+                bg1: '#4c0519', bg2: '#be123c', border: '#f472b6',
+                tag: 'GRAND DIWALI MELA 2026',
+                title: '🎆 ALL NIGHT SKY-SHOT COMPETITION',
+                sub: 'Chief Guest: Society Dost Squad • Free Kaju Katli!'
+            },
+            {
+                x: 2540, y: 940, w: 330, h: 95,
+                bg1: '#14532d', bg2: '#15803d', border: '#4ade80',
+                tag: 'BOLLYWOOD TALKIES',
+                title: '🎬 DIWALI BLOCKBUSTER: "DOSTANA 2026"',
+                sub: 'Daily 4 Shows • Housefull at Rajmandir Cinema!'
+            },
+            {
+                x: 420, y: 1840, w: 420, h: 110,
+                bg1: '#701a75', bg2: '#a21caf', border: '#facc15',
+                tag: 'NAVRATNA JEWELLERS',
+                title: '✨ DHANTERAS & DIWALI GOLD UTSAV ✨',
+                sub: '100% Making Charge Free on Gold Coins & Jhumkas!'
+            },
+            {
+                x: 2150, y: 1840, w: 440, h: 110,
+                bg1: '#7f1d1d', bg2: '#dc2626', border: '#fde047',
+                tag: 'SIVAKASI SPECIAL',
+                title: '🧨 1000-WALA LADI & 12-SHOT REPEATER',
+                sub: 'Available at Laxmi Patakha Bhandar (Shop #1)'
+            }
+        ];
+
+        const PARKED_VEHICLES = [
+            { type: 'auto', x: 740, y: 1415, angle: 0, label: 'GJ-02 AUTO' },
+            { type: 'auto', x: 1810, y: 1415, angle: 0, label: 'SHANTI EXPRESS' },
+            { type: 'car', x: 1340, y: 1790, color: '#ef4444', angle: Math.PI },
+            { type: 'car', x: 2420, y: 1415, color: '#3b82f6', angle: 0 }
+        ];
+
+        const OUTDOOR_DIYAS = [
+            { x: 405, y: 495, lit: true }, { x: 495, y: 495, lit: true },
+            { x: 1010, y: 495, lit: true }, { x: 1100, y: 495, lit: true },
+            { x: 2085, y: 495, lit: true }, { x: 2175, y: 495, lit: true },
+            { x: 2680, y: 495, lit: true }, { x: 2770, y: 495, lit: true },
+            { x: 1520, y: 690, lit: true }, { x: 1680, y: 690, lit: true },
+            { x: 1520, y: 810, lit: true }, { x: 1680, y: 810, lit: true },
+            { x: 740, y: 615, lit: false }, { x: 1320, y: 615, lit: false },
+            { x: 1860, y: 615, lit: false }, { x: 2420, y: 615, lit: false },
+            { x: 740, y: 895, lit: false }, { x: 1320, y: 895, lit: false },
+            { x: 1860, y: 895, lit: false }, { x: 2420, y: 895, lit: false },
+            { x: 450, y: 1420, lit: false }, { x: 1070, y: 1420, lit: false },
+            { x: 2120, y: 1420, lit: false }, { x: 2710, y: 1420, lit: false },
+            { x: 1520, y: 1520, lit: false }, { x: 1680, y: 1520, lit: false },
+            { x: 1520, y: 1680, lit: false }, { x: 1680, y: 1680, lit: false }
+        ];
+
+        const INTERIOR = {
+            width: 860, height: 600,
+            doorX: 430, doorY: 545,
+            mithaiX: 430, mithaiY: 310,
+            npcX: 430, npcY: 200,
+            diyas: [
+                { x: 140, y: 150, lit: true },
+                { x: 720, y: 150, lit: true },
+                { x: 140, y: 475, lit: false },
+                { x: 720, y: 475, lit: false }
+            ]
+        };
+
+        const CHHAT_ZONE = {
+            width: 1300, height: 820,
+            stairsX: 650, stairsY: 710,
+            sharmaRoofX: 650, sharmaRoofY: 105
+        };
+
+        /**************************************************************
+         * 3. PLAYER STATE, SCOOTY VEHICLE & AI DOST SQUAD
+         **************************************************************/
+        const savedName = localStorage.getItem('diwali_player_name') || ('Dost_' + Math.floor(100 + Math.random() * 899));
+        const savedColor = localStorage.getItem('diwali_player_color') || '#f59e0b';
+
+        const player = {
+            name: savedName,
+            color: savedColor,
+            x: 1560 + (Math.random() - 0.5) * 120,
+            y: 750 + (Math.random() - 0.5) * 60,
+            angle: 0,
+            baseSpeed: 265,
+            speedBoostTimer: 0,
+            location: 'road',
+            onScooty: false,
+            scootyNeon: '#06b6d4',
+            selectedSlot: 0,
+            sparklerActive: false,
+            coins: 450,
+            mithaiBoxes: 2,
+            inventory: [20, 12, 15, 10, 999, 6, 5],
+            chatText: 'Happy Diwali! Direct Global Server pe aao! 🛵🎆',
+            chatTimer: 5.5
+        };
+
+        document.getElementById('playerNameInput').value = player.name;
+        document.getElementById('hudPlayerName').textContent = player.name;
+
+        const parkedScooty = { x: 1490, y: 785, angle: 0 };
+
+        let aiEnabled = true;
+        const aiFriends = [
+            {
+                id: 'ai_abhi', name: 'Abhi', color: '#3b82f6',
+                x: 1420, y: 730, targetX: 1420, targetY: 730,
+                angle: 0, sparkler: false, timer: 2.0,
+                chatText: 'Bhai 1000-Wala Ladi (Key 7) Bazaar chowk pe lagate hai! 🧨🔥', chatTimer: 5.5
+            },
+            {
+                id: 'ai_harsh', name: 'Harsh', color: '#10b981',
+                x: 1740, y: 790, targetX: 1740, targetY: 790,
+                angle: 0, sparkler: true, timer: 3.2,
+                chatText: 'Oye Scooty ka Horn (H) baja ke sabko bula! 🛵📢', chatTimer: 5.0
+            },
+            {
+                id: 'ai_krish', name: 'Krish', color: '#ef4444',
+                x: 1120, y: 1540, targetX: 1120, targetY: 1540,
+                angle: 0, sparkler: false, timer: 4.1,
+                chatText: 'Main Laxmi Patakha Bhandar ke bahar khada hu, jaldi aao! 🏪🚀', chatTimer: 6.0
+            },
+            {
+                id: 'ai_priya', name: 'Priya', color: '#ec4899',
+                x: 2050, y: 1560, targetX: 2050, targetY: 1560,
+                angle: 0, sparkler: true, timer: 2.8,
+                chatText: 'Apna Chai Tapri ki Cutting Chai aur Rajwadi Jalebi best hai! ☕🥨', chatTimer: 5.2
+            }
+        ];
+
+        const AI_DIALOGUES = [
+            'Bhai 1000-Wala Ladi ki aawaz poore Bazaar me goonj rahi hai! 🧨🔥',
+            'Oye Scooty ki neon light kitni sahi chamak rahi hai road pe! 🛵✨',
+            'Sharma Ji ki notice board ke samne hi Sutli Bomb phod diya! 😂💣',
+            'Chhat pe chalo, 12-Shot Sky-Shot lagate hai! 🪜🎆',
+            'Happy Diwali pure Shanti Society aur Global Players ko! 🪔✨',
+            'Rajwadi Mithai se Kaju Katli ka dabba leke Patel Kaku ke ghar chalo! 🎁'
+        ];
+
+        /**************************************************************
+         * 4. FIREWORKS, 1000-LADI, SKY-SHOTS & SKY LANTERNS ARRAYS
+         **************************************************************/
+        const activeFireworks = [];
+        const particles = [];
+        const shockwaves = [];
+        const skyLanterns = [];
+        let lightingQuality = 'ULTRA';
+        let screenShake = 0;
+        let skyFlashAlpha = 0;
+        let skyFlashColor = '#fbbf24';
+
+        for (let i = 0; i < 12; i++) {
+            skyLanterns.push({
+                x: 300 + Math.random() * 2600,
+                y: 200 + Math.random() * 1700,
+                vx: 12 + Math.random() * 18,
+                vy: -18 - Math.random() * 22,
+                size: 10 + Math.random() * 6,
+                phase: Math.random() * Math.PI * 2
+            });
+        }
+
+        let bannerTimeout = null;
+        function showBanner(icon, text) {
+            const banner = document.getElementById('eventBanner');
+            document.getElementById('eventBannerIcon').textContent = icon;
+            document.getElementById('eventBannerText').textContent = text;
+            banner.classList.remove('opacity-0', '-translate-y-2');
+            banner.classList.add('opacity-100', 'translate-y-0');
+            if (bannerTimeout) clearTimeout(bannerTimeout);
+            bannerTimeout = setTimeout(() => {
+                banner.classList.remove('opacity-100', 'translate-y-0');
+                banner.classList.add('opacity-0', '-translate-y-2');
+            }, 3200);
+        }
+
+        function updateHUD() {
+            document.getElementById('hudPlayerName').textContent = player.name;
+            document.getElementById('coinCountDisplay').textContent = `₹${player.coins}`;
+            document.getElementById('shopCoinBalance').textContent = `🪙 ₹${player.coins}`;
+            document.getElementById('mithaiBoxDisplay').textContent = `${player.mithaiBoxes}`;
+
+            for (let i = 0; i < 7; i++) {
+                const el = document.getElementById(`invCount${i}`);
+                if (el && i !== 4) el.textContent = player.inventory[i];
+            }
+
+            const litCount = OUTDOOR_DIYAS.filter(d => d.lit).length;
+            document.getElementById('diyaCountDisplay').textContent = `${litCount}/${OUTDOOR_DIYAS.length}`;
+
+            document.querySelectorAll('.hotbar-slot').forEach((btn, idx) => {
+                if (idx === player.selectedSlot) btn.classList.add('active');
+                else btn.classList.remove('active');
+            });
+
+            const scootyBtn = document.getElementById('rideScootyBtn');
+            const hornBtnEl = document.getElementById('hornBtn');
+            document.getElementById('scootyBtnLabel').textContent = player.onScooty ? 'PARK [F]' : 'RIDE [F]';
+            if (player.onScooty) {
+                scootyBtn.classList.add('arc-btn-highlight');
+                hornBtnEl.classList.add('arc-btn-highlight');
+            } else {
+                scootyBtn.classList.remove('arc-btn-highlight');
+                hornBtnEl.classList.remove('arc-btn-highlight');
+            }
+
+            const locBadge = document.getElementById('locationBadge');
+            if (player.location === 'road') {
+                locBadge.textContent = player.y > 1100 ? '🛍️ Diwali Bazaar' : '🏘️ Society Wing';
+            } else if (player.location === 'chhat') {
+                locBadge.textContent = '🪜 Society Chhat';
+            } else {
+                const h = HOUSES.find(item => item.id === player.location);
+                locBadge.textContent = `🏠 ${h ? h.name : 'Inside Ghar'}`;
+            }
+
+            updateOnlineCounterBadge();
+        }
+
+        /**************************************************************
+         * 5. FIREWORK SPAWNER (Slots 1-7)
+         **************************************************************/
+        function spawnFirework(type, x, y, targetX, targetY, ownerName = 'Player', isRemote = false) {
+            const palette = ['#f43f5e', '#fbbf24', '#38bdf8', '#a855f7', '#10b981', '#fb923c'];
+
+            if (type === 0) {
+                sfx.playRocketWhistle();
+                const dx = targetX - x;
+                const dy = targetY - y;
+                const dist = Math.hypot(dx, dy) || 1;
+                const travelDist = Math.min(Math.max(dist, 240), 720);
+                const dirX = dx / dist;
+                const dirY = dy / dist;
+                const speed = 720;
+                activeFireworks.push({
+                    type: 'rocket',
+                    x, y,
+                    vx: dirX * speed, vy: dirY * speed,
+                    angle: Math.atan2(dirY, dirX),
+                    timer: travelDist / speed,
+                    ownerName,
+                    color: palette[Math.floor(Math.random() * palette.length)]
+                });
+            } else if (type === 1) {
+                sfx.playCrackle();
+                activeFireworks.push({ type: 'anar', x, y, timer: 4.6, maxTimer: 4.6, ownerName });
+            } else if (type === 2) {
+                sfx.playCrackle();
+                activeFireworks.push({
+                    type: 'chakri',
+                    x, y,
+                    vx: (Math.random() - 0.5) * 55, vy: (Math.random() - 0.5) * 55,
+                    spinAngle: 0, timer: 4.2, ownerName
+                });
+            } else if (type === 3) {
+                activeFireworks.push({ type: 'sutli', x, y, timer: 3.0, maxTimer: 3.0, ownerName });
+                if (aiEnabled && player.location === 'road') {
+                    aiFriends.forEach(bot => {
+                        if (Math.hypot(bot.x - x, bot.y - y) < 300) {
+                            bot.chatText = 'Bhaago! Sutli Bomb jalaya hai!! 💣🏃‍♂️';
+                            bot.chatTimer = 3.0;
+                            const away = Math.atan2(bot.y - y, bot.x - x);
+                            bot.targetX = Math.max(200, Math.min(WORLD.width - 200, bot.x + Math.cos(away) * 260));
+                            bot.targetY = Math.max(580, Math.min(1720, bot.y + Math.sin(away) * 180));
+                        }
+                    });
+                }
+            } else if (type === 5) {
+                sfx.playChime();
+                activeFireworks.push({
+                    type: 'skyshot_box',
+                    x, y,
+                    shotsRemaining: 12, nextShotDelay: 0.15, timer: 8.0, ownerName
+                });
+                showBanner('🎆', `${ownerName} placed a 12-Shot Sky-Shot Repeater!`);
+            } else if (type === 6) {
+                const aimAngle = Math.atan2(targetY - y, targetX - x);
+                const nodes = [];
+                for (let n = 0; n < 28; n++) {
+                    nodes.push({
+                        x: x + Math.cos(aimAngle) * (n * 11) + (Math.random() - 0.5) * 6,
+                        y: y + Math.sin(aimAngle) * (n * 11) + (Math.random() - 0.5) * 6,
+                        exploded: false
+                    });
+                }
+                activeFireworks.push({
+                    type: 'ladi',
+                    x, y, angle: aimAngle, nodes,
+                    currentIndex: 0, stepTimer: 0.08, timer: 5.0, ownerName
+                });
+                showBanner('🧨', `${ownerName} lit a 1000-Wala Garland Ladi!`);
+            }
+
+            if (!isRemote) {
+                broadcastGlobalEvent({
+                    kind: 'firework',
+                    fwType: type,
+                    x: Math.round(x),
+                    y: Math.round(y),
+                    targetX: Math.round(targetX),
+                    targetY: Math.round(targetY),
+                    playerName: player.name
+                });
+            }
+        }
+
+        function createRocketBurst(x, y, mainColor, isSkyShot = false) {
+            sfx.playBoom(isSkyShot ? 1.25 : 1.05);
+            screenShake = Math.max(screenShake, isSkyShot ? 15 : 11);
+            skyFlashAlpha = isSkyShot ? 0.32 : 0.24;
+            skyFlashColor = mainColor;
+
+            shockwaves.push({ x, y, radius: 8, maxRadius: isSkyShot ? 210 : 165, alpha: 0.95, color: mainColor });
+
+            const palette = [mainColor, '#fde047', '#ffffff', '#f472b6', '#38bdf8', '#4ade80'];
+            const count = isSkyShot ? 95 : 75;
+            for (let i = 0; i < count; i++) {
+                const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.1;
+                const speed = 65 + Math.random() * (isSkyShot ? 290 : 240);
+                particles.push({
+                    x, y,
+                    vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+                    life: 0.65 + Math.random() * 0.65, maxLife: 1.3,
+                    size: 2.5 + Math.random() * 3.2,
+                    color: palette[Math.floor(Math.random() * palette.length)],
+                    gravity: 55, drag: 0.96
+                });
+            }
+
+            if (player.location === 'road') {
+                HOUSES.forEach(h => {
+                    if (x >= h.x - 25 && x <= h.x + h.w + 25 && y >= h.y - 25 && y <= h.y + h.h + 25) {
+                        showBanner('🏠🚀', `Rocket ${h.name} ki chhat pe phata! (${h.owner}: "Kaun hai ye shaitaan?!")`);
+                    }
+                });
+            } else if (player.location === 'chhat' && y < 230) {
+                showBanner('👴🚀', 'Sharma Ji (Chhat Se): "Arre meri paani ki tanki pe Rocket mat chhodo!!" 😂');
+            }
+        }
+
+        function createSutliExplosion(x, y) {
+            sfx.playBoom(1.8);
+            screenShake = Math.max(screenShake, 28);
+            skyFlashAlpha = 0.45;
+            skyFlashColor = '#fb923c';
+
+            shockwaves.push({ x, y, radius: 10, maxRadius: 270, alpha: 1.0, color: '#f97316' });
+            shockwaves.push({ x, y, radius: 5, maxRadius: 170, alpha: 0.85, color: '#fef08a' });
+
+            for (let i = 0; i < 105; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 45 + Math.random() * 340;
+                const colors = ['#ef4444', '#f97316', '#facc15', '#ffffff', '#a3e635'];
+                particles.push({
+                    x, y,
+                    vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+                    life: 0.5 + Math.random() * 0.65, maxLife: 1.15,
+                    size: 3 + Math.random() * 4,
+                    color: colors[Math.floor(Math.random() * colors.length)],
+                    gravity: 35, drag: 0.94
+                });
+            }
+            for (let i = 0; i < 18; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 15 + Math.random() * 70;
+                particles.push({
+                    x, y,
+                    vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 15,
+                    life: 1.3 + Math.random() * 1.0, maxLife: 2.3,
+                    size: 14 + Math.random() * 15,
+                    color: 'rgba(148, 163, 184, 0.35)',
+                    gravity: -12, drag: 0.97
+                });
+            }
+
+            if (player.location === 'road' && Math.hypot(x - 1080, y - 985) < 260) {
+                showBanner('⚠️😂', 'Sharma Ji Notice Board ke samne hi Sutli Bomb phod diya! Savage!');
+            }
+        }
+
+        function triggerPlayerFirework(targetWorldX, targetWorldY) {
+            if (player.location !== 'road' && player.location !== 'chhat' && player.selectedSlot !== 4) {
+                showBanner('🏠', 'Ghar ke andar bade patakhe mat phodo! Bahar Road ya Chhat pe jao!');
+                player.selectedSlot = 4;
+                player.sparklerActive = true;
+                updateHUD();
+                return;
+            }
+
+            const slot = player.selectedSlot;
+            if (slot === 4) {
+                player.sparklerActive = !player.sparklerActive;
+                sfx.playCrackle();
+                showBanner('✨', player.sparklerActive ? 'Phuljhari Jala Li!' : 'Phuljhari Bujha Di.');
+                return;
+            }
+
+            if (player.inventory[slot] <= 0) {
+                showBanner('🧨', 'Patakhe khatam! Bazaar Shop se Free Diwali Hamper claim kar lo!');
+                openBazaarModal('patakha');
+                return;
+            }
+
+            player.inventory[slot]--;
+            updateHUD();
+
+            const aimAngle = Math.atan2(targetWorldY - player.y, targetWorldX - player.x);
+            const spawnX = player.x + Math.cos(aimAngle) * 32;
+            const spawnY = player.y + Math.sin(aimAngle) * 32;
+
+            spawnFirework(slot, spawnX, spawnY, targetWorldX, targetWorldY, player.name, false);
+        }
+
+        /**************************************************************
+         * 6. SCOOTY & KANDIL MECHANICS (`F`, `H`, `K` Keys)
+         **************************************************************/
+        function toggleScootyRide() {
+            if (player.location !== 'road') {
+                showBanner('🛵', 'Scooty sirf Society Road aur Bazaar Road pe chalti hai!');
+                return;
+            }
+            player.onScooty = !player.onScooty;
+            if (player.onScooty) {
+                sfx.playScootyHorn();
+                player.chatText = 'Chalo dosto Scooty pe gedi maarte hai! Pee-Pee! 🛵💨';
+                player.chatTimer = 4.0;
+                showBanner('🛵', 'Scooty Started! Use Joystick/WASD to drive & [H] for Horn!');
+            } else {
+                parkedScooty.x = player.x + 36;
+                parkedScooty.y = player.y + 10;
+                parkedScooty.angle = player.angle;
+                showBanner('🚶', 'Scooty park kar di.');
+            }
+            updateHUD();
+            syncPlayerState(true);
+        }
+
+        function blowScootyHorn() {
+            sfx.playScootyHorn();
+            player.chatText = 'Pee-Pee!! Side hato bhai Scooty aa rahi hai! 🛵📢';
+            player.chatTimer = 3.0;
+            shockwaves.push({ x: player.x, y: player.y, radius: 10, maxRadius: 120, alpha: 0.7, color: '#fde047' });
+
+            broadcastGlobalEvent({ kind: 'horn', x: Math.round(player.x), y: Math.round(player.y), playerName: player.name });
+
+            if (aiEnabled && player.location === 'road') {
+                aiFriends.forEach(bot => {
+                    if (Math.hypot(bot.x - player.x, bot.y - player.y) < 320) {
+                        bot.chatText = 'Arre bhai Scooty dhire chala! 😂🛵';
+                        bot.chatTimer = 3.2;
+                        const sideAngle = Math.atan2(bot.y - player.y, bot.x - player.x);
+                        bot.targetX = bot.x + Math.cos(sideAngle) * 140;
+                        bot.targetY = bot.y + Math.sin(sideAngle) * 100;
+                    }
+                });
+            }
+        }
+
+        function releaseFloatingKandil(count = 1) {
+            sfx.playChime();
+            for (let i = 0; i < count; i++) {
+                skyLanterns.push({
+                    x: player.x + (Math.random() - 0.5) * 70,
+                    y: player.y - 20 + (Math.random() - 0.5) * 40,
+                    vx: 14 + Math.random() * 18,
+                    vy: -28 - Math.random() * 20,
+                    size: 13 + Math.random() * 4,
+                    phase: Math.random() * Math.PI * 2
+                });
+            }
+            showBanner('🏮', 'Released glowing Sky Lantern (Fanoos) into the night sky!');
+        }
+
+        /**************************************************************
+         * 7. CONTEXTUAL INTERACTIONS (Houses, Bazaar Shops, Chhat, Diyas)
+         **************************************************************/
+        let currentInteraction = null;
+
+        function openBazaarModal(tabName = 'patakha') {
+            document.getElementById('shopModal').classList.remove('hidden');
+            switchShopTab(tabName);
+        }
+
+        function switchShopTab(tabName) {
+            document.querySelectorAll('.shop-tab-content').forEach(el => el.classList.add('hidden'));
+            const activeContent = document.getElementById(`shopTab_${tabName}`);
+            if (activeContent) activeContent.classList.remove('hidden');
+
+            document.querySelectorAll('.shop-tab-btn').forEach(btn => {
+                if (btn.getAttribute('data-shoptab') === tabName) {
+                    btn.className = 'shop-tab-btn bg-amber-500 text-slate-950 font-bold text-xs py-2 rounded-xl flex items-center justify-center gap-1 transition';
+                } else {
+                    btn.className = 'shop-tab-btn bg-slate-800/90 text-amber-200 font-semibold text-xs py-2 rounded-xl flex items-center justify-center gap-1 transition';
+                }
+            });
+        }
+
+        function checkNearbyInteractions() {
+            currentInteraction = null;
+
+            if (player.location === 'road') {
+                for (const h of HOUSES) {
+                    if (Math.hypot(player.x - h.doorX, player.y - h.doorY) < 82) {
+                        currentInteraction = { type: 'enter_house', house: h, icon: '🚪', label: `Enter ${h.name}` };
+                        break;
+                    }
+                }
+                if (!currentInteraction && Math.hypot(player.x - CHHAT_STAIRS.interactX, player.y - CHHAT_STAIRS.interactY) < 85) {
+                    currentInteraction = { type: 'enter_chhat', icon: '🪜', label: 'Climb to Society Chhat' };
+                }
+                if (!currentInteraction) {
+                    for (const shop of BAZAAR_SHOPS) {
+                        if (Math.hypot(player.x - shop.interactX, player.y - shop.interactY) < 95) {
+                            currentInteraction = { type: 'open_bazaar_shop', shop, icon: shop.icon, label: `Shop: ${shop.name}` };
+                            break;
+                        }
+                    }
+                }
+                if (!currentInteraction && !player.onScooty && Math.hypot(player.x - parkedScooty.x, player.y - parkedScooty.y) < 70) {
+                    currentInteraction = { type: 'mount_scooty', icon: '🛵', label: 'Ride Scooty' };
+                }
+                if (!currentInteraction) {
+                    for (const d of OUTDOOR_DIYAS) {
+                        if (!d.lit && Math.hypot(player.x - d.x, player.y - d.y) < 60) {
+                            currentInteraction = { type: 'light_outdoor_diya', diya: d, icon: '🪔', label: 'Light Diya (+₹20)' };
+                            break;
+                        }
+                    }
+                }
+            } else if (player.location === 'chhat') {
+                if (Math.hypot(player.x - CHHAT_ZONE.stairsX, player.y - CHHAT_ZONE.stairsY) < 85) {
+                    currentInteraction = { type: 'exit_chhat', icon: '🪜', label: 'Go Down to Road' };
+                }
+            } else {
+                const house = HOUSES.find(h => h.id === player.location);
+                if (Math.hypot(player.x - INTERIOR.doorX, player.y - INTERIOR.doorY) < 80) {
+                    currentInteraction = { type: 'exit_house', house, icon: '🛣️', label: 'Exit to Road' };
+                } else if (Math.hypot(player.x - INTERIOR.mithaiX, player.y - INTERIOR.mithaiY) < 90) {
+                    currentInteraction = {
+                        type: 'eat_mithai',
+                        house,
+                        icon: '🍬',
+                        label: player.mithaiBoxes > 0 ? 'Gift Mithai (+₹120)' : 'Eat Kaju Katli (+₹50)'
+                    };
+                } else {
+                    for (const d of INTERIOR.diyas) {
+                        if (!d.lit && Math.hypot(player.x - d.x, player.y - d.y) < 65) {
+                            currentInteraction = { type: 'light_indoor_diya', diya: d, icon: '🪔', label: 'Light Diya (+₹25)' };
+                            break;
+                        }
+                    }
+                }
+            }
+
+            const promptEl = document.getElementById('interactionPrompt');
+            const arcBtn = document.getElementById('arcInteractBtn');
+            const arcIcon = document.getElementById('arcInteractIcon');
+
+            if (currentInteraction) {
+                promptEl.classList.remove('hidden');
+                document.getElementById('interactionIcon').textContent = currentInteraction.icon;
+                document.getElementById('interactionText').textContent = currentInteraction.label;
+                arcBtn.classList.add('arc-btn-highlight');
+                arcIcon.textContent = currentInteraction.icon;
+            } else {
+                promptEl.classList.add('hidden');
+                arcBtn.classList.remove('arc-btn-highlight');
+                arcIcon.textContent = '✋';
+            }
+        }
+
+        function executeInteraction() {
+            if (!currentInteraction) {
+                showBanner('💡', 'Walk near a House Door, Bazaar Shop, Diya, or Chhat Stairs to interact!');
+                return;
+            }
+
+            if (currentInteraction.type === 'enter_house') {
+                const h = currentInteraction.house;
+                player.onScooty = false;
+                player.location = h.id;
+                player.x = INTERIOR.doorX;
+                player.y = INTERIOR.doorY - 50;
+                INTERIOR.diyas[2].lit = false;
+                INTERIOR.diyas[3].lit = false;
+                sfx.playChime();
+                showBanner('🏠', `Entered ${h.name}! ${h.owner} welcomes you!`);
+                updateHUD();
+            } else if (currentInteraction.type === 'exit_house') {
+                const h = currentInteraction.house;
+                player.location = 'road';
+                player.x = h ? h.doorX : 1600;
+                player.y = h ? h.doorY + 55 : 760;
+                sfx.playChime();
+                showBanner('🛣️', 'Back on Shanti Society Road!');
+                updateHUD();
+            } else if (currentInteraction.type === 'enter_chhat') {
+                player.onScooty = false;
+                player.location = 'chhat';
+                player.x = CHHAT_ZONE.stairsX;
+                player.y = CHHAT_ZONE.stairsY - 50;
+                player.selectedSlot = 5;
+                sfx.playChime();
+                showBanner('🪜', 'Reached Society Chhat! Fire 12-Shot Sky-Shots!');
+                updateHUD();
+            } else if (currentInteraction.type === 'exit_chhat') {
+                player.location = 'road';
+                player.x = CHHAT_STAIRS.interactX;
+                player.y = CHHAT_STAIRS.interactY + 35;
+                sfx.playChime();
+                showBanner('🛣️', 'Back on Society Road!');
+                updateHUD();
+            } else if (currentInteraction.type === 'open_bazaar_shop') {
+                openBazaarModal(currentInteraction.shop.tab);
+            } else if (currentInteraction.type === 'mount_scooty') {
+                toggleScootyRide();
+            } else if (currentInteraction.type === 'eat_mithai') {
+                const h = currentInteraction.house;
+                sfx.playChime();
+                if (player.mithaiBoxes > 0) {
+                    player.mithaiBoxes--;
+                    player.coins += 120;
+                    player.inventory[0] += 4;
+                    player.chatText = `Happy Diwali ${h.owner}! Ye lijiye Rajwadi Kaju Katli Box! 🎁🍬`;
+                    showBanner('🎁', `Gifted Mithai Box to ${h.owner}! Got ₹120 Shagun + 4 Rockets!`);
+                } else {
+                    player.coins += 50;
+                    player.inventory[0] += 2;
+                    player.chatText = `Maza aa gaya! ${h.name} ki Kaju Katli best hai! 🍬😋`;
+                    showBanner('🍬', `Ate Kaju Katli at ${h.name}! Got ₹50 Shagun + 2 Rockets!`);
+                }
+                player.chatTimer = 4.5;
+                for (let i = 0; i < 28; i++) {
+                    const a = Math.random() * Math.PI * 2;
+                    particles.push({
+                        x: INTERIOR.mithaiX, y: INTERIOR.mithaiY,
+                        vx: Math.cos(a) * 90, vy: Math.sin(a) * 90,
+                        life: 0.65, maxLife: 0.65, size: 3, color: '#fbbf24', gravity: 20, drag: 0.95
+                    });
+                }
+                updateHUD();
+            } else if (currentInteraction.type === 'light_outdoor_diya' || currentInteraction.type === 'light_indoor_diya') {
+                currentInteraction.diya.lit = true;
+                const reward = currentInteraction.type === 'light_indoor_diya' ? 25 : 20;
+                player.coins += reward;
+                sfx.playChime();
+                showBanner('🪔', `Shubh Deepawali! Diya lit (+₹${reward} Shagun)`);
+                updateHUD();
+            }
+            checkNearbyInteractions();
+            syncPlayerState(true);
+        }
+
+        /**************************************************************
+         * 8. INPUT HANDLING (WASD, Touch/Mouse Joystick, Arc Cluster)
+         **************************************************************/
+        const keys = {};
+        const mouse = { x: window.innerWidth / 2, y: window.innerHeight / 2, worldX: 1600, worldY: 760 };
+        const joystick = { active: false, dx: 0, dy: 0 };
+
+        window.addEventListener('keydown', (e) => {
+            if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+            const k = e.key.toLowerCase();
+            keys[k] = true;
+
+            if (k >= '1' && k <= '7') {
+                player.selectedSlot = parseInt(k) - 1;
+                if (player.selectedSlot === 4) player.sparklerActive = true;
+                updateHUD();
+            } else if (k === ' ') {
+                e.preventDefault();
+                triggerPlayerFirework(mouse.worldX, mouse.worldY);
+            } else if (k === 'e') {
+                e.preventDefault();
+                executeInteraction();
+            } else if (k === 'f') {
+                e.preventDefault();
+                toggleScootyRide();
+            } else if (k === 'h') {
+                e.preventDefault();
+                blowScootyHorn();
+            } else if (k === 'k') {
+                e.preventDefault();
+                releaseFloatingKandil(1);
+            } else if (k === 'm') {
+                e.preventDefault();
+                document.getElementById('minimapContainer').classList.toggle('hidden');
+            } else if (k === 'z') {
+                e.preventDefault();
+                document.body.classList.toggle('hud-hidden');
+                showBanner('👁️', document.body.classList.contains('hud-hidden') ? 'HUD Hidden (Press Z to restore)' : 'HUD Restored');
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            keys[e.key.toLowerCase()] = false;
+        });
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const minimapCanvas = document.getElementById('minimapCanvas');
+        const miniCtx = minimapCanvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return;
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+            updateMouseWorldCoords();
+            triggerPlayerFirework(mouse.worldX, mouse.worldY);
+        });
+
+        // Radar Mini-Map Click Teleport
+        minimapCanvas.addEventListener('click', (e) => {
+            const rect = minimapCanvas.getBoundingClientRect();
+            const clickX = (e.clientX - rect.left) / rect.width;
+            const clickY = (e.clientY - rect.top) / rect.height;
+            player.location = 'road';
+            player.x = Math.max(120, Math.min(WORLD.width - 120, clickX * WORLD.width));
+            player.y = Math.max(520, Math.min(WORLD.height - 150, clickY * WORLD.height));
+            sfx.playChime();
+            showBanner('🧭', 'Fast-Traveled via Society Radar!');
+            updateHUD();
+        });
+
+        // Universal Touch + Mouse Virtual Joystick
+        const joystickZone = document.getElementById('joystickZone');
+        const joystickKnob = document.getElementById('joystickKnob');
+
+        function updateJoystickFromPoint(clientX, clientY) {
+            const rect = joystickZone.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            let dx = clientX - centerX;
+            let dy = clientY - centerY;
+            const dist = Math.hypot(dx, dy);
+            const maxRadius = rect.width / 2 - 10;
+            if (dist > maxRadius) {
+                dx = (dx / dist) * maxRadius;
+                dy = (dy / dist) * maxRadius;
+            }
+            joystickKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+            joystick.active = true;
+            joystick.dx = dx / maxRadius;
+            joystick.dy = dy / maxRadius;
+        }
+
+        function resetJoystick() {
+            joystick.active = false;
+            joystick.dx = 0;
+            joystick.dy = 0;
+            joystickKnob.style.transform = `translate(0px, 0px)`;
+        }
+
+        joystickZone.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (e.touches[0]) updateJoystickFromPoint(e.touches[0].clientX, e.touches[0].clientY);
+        }, { passive: false });
+
+        joystickZone.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (e.touches[0]) updateJoystickFromPoint(e.touches[0].clientX, e.touches[0].clientY);
+        }, { passive: false });
+
+        joystickZone.addEventListener('touchend', resetJoystick);
+
+        let mouseJoyDragging = false;
+        joystickZone.addEventListener('mousedown', (e) => {
+            e.stopPropagation();
+            mouseJoyDragging = true;
+            updateJoystickFromPoint(e.clientX, e.clientY);
+        });
+        window.addEventListener('mousemove', (e) => {
+            if (mouseJoyDragging) updateJoystickFromPoint(e.clientX, e.clientY);
+        });
+        window.addEventListener('mouseup', () => {
+            if (mouseJoyDragging) {
+                mouseJoyDragging = false;
+                resetJoystick();
+            }
+        });
+
+        /**************************************************************
+         * 9. HUD, OPACITY SLIDER & SHOP BUTTON LISTENERS
+         **************************************************************/
+        const hudOpacitySlider = document.getElementById('hudOpacitySlider');
+        hudOpacitySlider.addEventListener('input', (e) => {
+            const val = parseInt(e.target.value);
+            document.documentElement.style.setProperty('--hud-opacity', (val / 100).toFixed(2));
+            document.getElementById('sliderValueText').textContent = `${val}%`;
+            document.getElementById('opacityPercentLabel').textContent = `${val}%`;
+        });
+
+        document.getElementById('toggleHudSettingsBtn').addEventListener('click', () => {
+            document.getElementById('hudSettingsPopover').classList.toggle('hidden');
+            document.getElementById('chatPopover').classList.add('hidden');
+        });
+        document.getElementById('closeHudSettingsBtn').addEventListener('click', () => {
+            document.getElementById('hudSettingsPopover').classList.add('hidden');
+        });
+        document.getElementById('hideAllHudBtn').addEventListener('click', () => {
+            document.body.classList.toggle('hud-hidden');
+            document.getElementById('hudSettingsPopover').classList.add('hidden');
+            showBanner('👁️', 'Press [Z] key anytime to toggle HUD visibility');
+        });
+
+        document.getElementById('toggleChatPopoverBtn').addEventListener('click', () => {
+            document.getElementById('chatPopover').classList.toggle('hidden');
+            document.getElementById('hudSettingsPopover').classList.add('hidden');
+        });
+        document.getElementById('closeChatPopoverBtn').addEventListener('click', () => {
+            document.getElementById('chatPopover').classList.add('hidden');
+        });
+
+        document.getElementById('toggleRadarBtn').addEventListener('click', () => {
+            document.getElementById('minimapContainer').classList.toggle('hidden');
+        });
+
+        document.querySelectorAll('.hotbar-slot').forEach(btn => {
+            btn.addEventListener('click', () => {
+                player.selectedSlot = parseInt(btn.getAttribute('data-slot'));
+                if (player.selectedSlot === 4) player.sparklerActive = !player.sparklerActive;
+                updateHUD();
+            });
+        });
+
+        document.getElementById('quickFireBtn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            const tx = player.x + Math.cos(player.angle) * 320;
+            const ty = player.y + Math.sin(player.angle) * 320;
+            triggerPlayerFirework(tx, ty);
+        });
+
+        document.getElementById('interactionActionBtn').addEventListener('click', executeInteraction);
+        document.getElementById('arcInteractBtn').addEventListener('click', executeInteraction);
+
+        document.getElementById('tpSocietyBtn').addEventListener('click', () => {
+            player.location = 'road';
+            player.x = 1600; player.y = 750;
+            sfx.playChime();
+            showBanner('🏘️', 'Teleported to Shanti Society Central Chowk!');
+            updateHUD();
+        });
+
+        document.getElementById('tpBazaarBtn').addEventListener('click', () => {
+            player.location = 'road';
+            player.x = 1600; player.y = 1580;
+            sfx.playChime();
+            showBanner('🛍️', 'Welcome to Diwali Main Bazaar Road!');
+            updateHUD();
+        });
+
+        document.getElementById('tpChhatBtn').addEventListener('click', () => {
+            if (player.location === 'chhat') {
+                player.location = 'road';
+                player.x = CHHAT_STAIRS.interactX; player.y = CHHAT_STAIRS.interactY + 40;
+                showBanner('🛣️', 'Back on Society Road!');
+            } else {
+                player.onScooty = false;
+                player.location = 'chhat';
+                player.x = CHHAT_ZONE.stairsX; player.y = CHHAT_ZONE.stairsY - 50;
+                player.selectedSlot = 5;
+                showBanner('🪜', 'Welcome to Society Chhat! Launch 12-Shot Sky-Shots!');
+            }
+            sfx.playChime();
+            updateHUD();
+        });
+
+        document.getElementById('rideScootyBtn').addEventListener('click', toggleScootyRide);
+        document.getElementById('hornBtn').addEventListener('click', blowScootyHorn);
+        document.getElementById('releaseKandilBtn').addEventListener('click', () => releaseFloatingKandil(1));
+
+        document.getElementById('toggleAiBtn').addEventListener('click', () => {
+            aiEnabled = !aiEnabled;
+            document.getElementById('aiStatusText').textContent = aiEnabled ? 'ON' : 'OFF';
+            updateOnlineCounterBadge();
+            showBanner('🧑‍🤝‍🧑', aiEnabled ? 'AI Dost Squad active!' : 'AI Dost Squad hidden.');
+        });
+
+        document.getElementById('lightingToggleBtn').addEventListener('click', () => {
+            lightingQuality = lightingQuality === 'ULTRA' ? 'STANDARD' : 'ULTRA';
+            document.getElementById('lightingModeText').textContent = lightingQuality;
+            showBanner('💡', `Dynamic 2D Lighting set to ${lightingQuality}!`);
+        });
+
+        document.getElementById('soundToggleBtn').addEventListener('click', () => {
+            sfx.muted = !sfx.muted;
+            document.getElementById('soundIcon').className = sfx.muted
+                ? 'fa-solid fa-volume-xmark text-red-400'
+                : 'fa-solid fa-volume-high text-amber-300';
+        });
+
+        // Shop Modal
+        document.getElementById('openShopBtn').addEventListener('click', () => openBazaarModal('patakha'));
+        document.getElementById('closeShopModalBtn').addEventListener('click', () => {
+            document.getElementById('shopModal').classList.add('hidden');
+        });
+
+        document.querySelectorAll('.shop-tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => switchShopTab(btn.getAttribute('data-shoptab')));
+        });
+
+        document.querySelectorAll('.buy-item-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const buyKey = btn.getAttribute('data-buy');
+                const amount = parseInt(btn.getAttribute('data-amount'));
+                const cost = parseInt(btn.getAttribute('data-cost'));
+                if (player.coins < cost) {
+                    showBanner('🪙', 'Shagun Coins kam hain! Free Bumper Diwali Hamper claim kar lo!');
+                    return;
+                }
+                player.coins -= cost;
+                if (buyKey === 'combo_ac') {
+                    player.inventory[1] += amount;
+                    player.inventory[2] += amount;
+                } else {
+                    const slot = parseInt(buyKey);
+                    player.inventory[slot] += amount;
+                }
+                sfx.playChime();
+                updateHUD();
+                showBanner('🧨', 'Patakhe Refilled from Laxmi Patakha Bhandar!');
+            });
+        });
+
+        document.getElementById('claimFreeComboBtn').addEventListener('click', () => {
+            player.inventory[0] += 12;
+            player.inventory[1] += 8;
+            player.inventory[2] += 8;
+            player.inventory[3] += 6;
+            player.inventory[5] += 4;
+            player.inventory[6] += 4;
+            player.coins += 150;
+            sfx.playChime();
+            updateHUD();
+            document.getElementById('shopModal').classList.add('hidden');
+            showBanner('🎁', 'Bumper Diwali Hamper Claimed! All 7 Crackers + ₹150 Shagun!');
+        });
+
+        document.getElementById('buyMithaiBoxBtn').addEventListener('click', () => {
+            if (player.coins >= 40) {
+                player.coins -= 40;
+                player.mithaiBoxes += 2;
+                sfx.playChime();
+                updateHUD();
+                showBanner('🎁', 'Bought 2 Royal Kaju Katli Gift Boxes!');
+            } else {
+                showBanner('🪙', 'Need ₹40! Claim the Free Bumper Hamper first.');
+            }
+        });
+
+        document.getElementById('buyJalebiBtn').addEventListener('click', () => {
+            if (player.coins >= 25) {
+                player.coins -= 25;
+                player.speedBoostTimer = 90;
+                sfx.playChime();
+                updateHUD();
+                document.getElementById('shopModal').classList.add('hidden');
+                showBanner('🥨⚡', 'Ate Garma-Garam Jalebi-Fafda! 1.45x Super Speed active!');
+            }
+        });
+
+        document.getElementById('drinkChaiBtn').addEventListener('click', () => {
+            player.coins += 50;
+            sfx.playChime();
+            if (aiEnabled && player.location === 'road') {
+                aiFriends.forEach((bot, i) => {
+                    bot.targetX = 2040 + i * 55;
+                    bot.targetY = 1430;
+                    bot.chatText = 'Wah! Apna Tapri ki Cutting Masala Chai! ☕🔥';
+                    bot.chatTimer = 5.0;
+                });
+            }
+            updateHUD();
+            document.getElementById('shopModal').classList.add('hidden');
+            showBanner('☕', 'Chai Party at Apna Tapri! +₹50 Shagun!');
+        });
+
+        document.getElementById('drinkSodaBtn').addEventListener('click', () => {
+            if (player.coins >= 15) {
+                player.coins -= 15;
+                createRocketBurst(player.x, player.y - 40, '#38bdf8', true);
+                updateHUD();
+                document.getElementById('shopModal').classList.add('hidden');
+                showBanner('🥤', 'Popped Goti Soda! Refreshing dhamaka!');
+            }
+        });
+
+        document.querySelectorAll('.scooty-neon-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                player.scootyNeon = btn.getAttribute('data-neon');
+                player.onScooty = true;
+                player.location = 'road';
+                sfx.playChime();
+                updateHUD();
+                document.getElementById('shopModal').classList.add('hidden');
+                showBanner('🛵✨', 'Scooty Neon Underglow Updated!');
+            });
+        });
+
+        document.getElementById('launch5FanoosBtn').addEventListener('click', () => {
+            releaseFloatingKandil(5);
+            document.getElementById('shopModal').classList.add('hidden');
+        });
+
+        // Chat
+        function sendPlayerChat(msg) {
+            if (!msg) return;
+            player.chatText = msg;
+            player.chatTimer = 5.5;
+            sfx.playChime();
+            syncPlayerState(true);
+            document.getElementById('chatPopover').classList.add('hidden');
+        }
+        document.querySelectorAll('.quick-chat-btn').forEach(btn => {
+            btn.addEventListener('click', () => sendPlayerChat(btn.getAttribute('data-chat')));
+        });
+        document.getElementById('customChatForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const input = document.getElementById('customChatInput');
+            if (input.value.trim()) {
+                sendPlayerChat(input.value.trim());
+                input.value = '';
+                input.blur();
+            }
+        });
+
+        // Profile & Help Modals
+        document.getElementById('openProfileBtn').addEventListener('click', () => {
+            document.getElementById('profileModal').classList.remove('hidden');
+        });
+        document.getElementById('closeProfileModalBtn').addEventListener('click', () => {
+            document.getElementById('profileModal').classList.add('hidden');
+        });
+        document.getElementById('helpModalBtn').addEventListener('click', () => {
+            document.getElementById('helpModal').classList.remove('hidden');
+        });
+        document.getElementById('closeHelpModalBtn').addEventListener('click', () => {
+            document.getElementById('helpModal').classList.add('hidden');
+        });
+
+        document.querySelectorAll('.color-swatch').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.color-swatch').forEach(b => b.classList.replace('border-white', 'border-transparent'));
+                btn.classList.replace('border-transparent', 'border-white');
+                player.color = btn.getAttribute('data-color');
+                localStorage.setItem('diwali_player_color', player.color);
+            });
+        });
+
+        document.getElementById('saveProfileBtn').addEventListener('click', () => {
+            const newName = document.getElementById('playerNameInput').value.trim() || 'Aarav';
+            player.name = newName;
+            localStorage.setItem('diwali_player_name', player.name);
+            updateHUD();
+            syncPlayerState(true);
+            document.getElementById('profileModal').classList.add('hidden');
+            showBanner('🌍', `Playing on Global Public Server as ${player.name}!`);
+        });
+
+        /**************************************************************
+         * 10. ZERO-CODE GLOBAL PUBLIC SERVER (MQTT WebSockets + BroadcastChannel)
+         * Anyone opening the link anywhere in the world auto-joins!
+         **************************************************************/
+        const localPeerId = 'p_' + Math.random().toString(36).substring(2, 10);
+        const GLOBAL_TOPIC_PREFIX = 'shanti-society-diwali-2026-global/v2';
+        const remotePlayers = new Map();
+        let mqttClient = null;
+        let isGlobalConnected = false;
+
+        function updateOnlineCounterBadge() {
+            const now = Date.now();
+            for (const [pid, rp] of remotePlayers.entries()) {
+                if (now - (rp.updatedAt || 0) > 18000) {
+                    remotePlayers.delete(pid);
+                }
+            }
+            const aiCount = aiEnabled ? aiFriends.length : 0;
+            const totalCount = 1 + remotePlayers.size + aiCount;
+            const badge = document.getElementById('globalOnlineBadge');
+            if (badge) {
+                badge.textContent = `🌍 ${totalCount} Live`;
+            }
+        }
+
+        function handleIncomingNetworkPayload(msg) {
+            if (!msg || msg.peerId === localPeerId) return;
+            if (msg.type === 'state' && msg.data) {
+                remotePlayers.set(msg.peerId, { ...msg.data, updatedAt: Date.now() });
+                updateOnlineCounterBadge();
+            } else if (msg.type === 'event' && msg.ev) {
+                const ev = msg.ev;
+                if (ev.kind === 'firework') {
+                    spawnFirework(ev.fwType, ev.x, ev.y, ev.targetX, ev.targetY, ev.playerName || 'Dost', true);
+                } else if (ev.kind === 'horn') {
+                    sfx.playScootyHorn();
+                    shockwaves.push({ x: ev.x, y: ev.y, radius: 10, maxRadius: 120, alpha: 0.7, color: '#fde047' });
+                }
+            }
+        }
+
+        // 1. Instant Local Tab Sync via BroadcastChannel
+        const bcChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('diwali_society_global_v2') : null;
+        if (bcChannel) {
+            bcChannel.onmessage = (ev) => handleIncomingNetworkPayload(ev.data);
+        }
+
+        // 2. Worldwide Zero-Config Public MQTT over WebSockets
+        function initGlobalPublicMultiplayer() {
+            if (typeof mqtt === 'undefined') return;
+            const brokers = [
+                'wss://broker.emqx.io:8084/mqtt',
+                'wss://test.mosquitto.org:8081/mqtt'
+            ];
+            let brokerIdx = 0;
+
+            function connectBroker() {
+                const url = brokers[brokerIdx % brokers.length];
+                try {
+                    mqttClient = mqtt.connect(url, {
+                        clientId: 'diwali_' + localPeerId + '_' + Math.floor(Math.random() * 999),
+                        clean: true,
+                        connectTimeout: 5000,
+                        reconnectPeriod: 4000
+                    });
+
+                    mqttClient.on('connect', () => {
+                        isGlobalConnected = true;
+                        mqttClient.subscribe(`${GLOBAL_TOPIC_PREFIX}/state`);
+                        mqttClient.subscribe(`${GLOBAL_TOPIC_PREFIX}/events`);
+                        document.getElementById('netStatusDot').className = 'w-2 h-2 rounded-full bg-emerald-400 animate-ping';
+                        syncPlayerState(true);
+                    });
+
+                    mqttClient.on('message', (topic, payload) => {
+                        try {
+                            const parsed = JSON.parse(payload.toString());
+                            handleIncomingNetworkPayload(parsed);
+                        } catch (e) {}
+                    });
+
+                    mqttClient.on('error', () => {
+                        brokerIdx++;
+                    });
+                } catch (err) {}
+            }
+            connectBroker();
+        }
+
+        let lastSyncTimestamp = 0;
+        function syncPlayerState(force = false) {
+            const now = Date.now();
+            if (!force && now - lastSyncTimestamp < 160) return;
+            lastSyncTimestamp = now;
+
+            const packet = {
+                type: 'state',
+                peerId: localPeerId,
+                data: {
+                    name: player.name,
+                    color: player.color,
+                    x: Math.round(player.x),
+                    y: Math.round(player.y),
+                    angle: Number(player.angle.toFixed(2)),
+                    location: player.location,
+                    onScooty: player.onScooty,
+                    scootyNeon: player.scootyNeon,
+                    sparkler: player.sparklerActive,
+                    chatText: player.chatTimer > 0 ? player.chatText : ''
+                }
+            };
+
+            if (bcChannel) bcChannel.postMessage(packet);
+            if (mqttClient && isGlobalConnected) {
+                try {
+                    mqttClient.publish(`${GLOBAL_TOPIC_PREFIX}/state`, JSON.stringify(packet), { qos: 0 });
+                } catch (e) {}
+            }
+        }
+
+        function broadcastGlobalEvent(evObj) {
+            const packet = {
+                type: 'event',
+                peerId: localPeerId,
+                ev: evObj
+            };
+            if (bcChannel) bcChannel.postMessage(packet);
+            if (mqttClient && isGlobalConnected) {
+                try {
+                    mqttClient.publish(`${GLOBAL_TOPIC_PREFIX}/events`, JSON.stringify(packet), { qos: 0 });
+                } catch (e) {}
+            }
+        }
+
+        // Heartbeat every 2.5 seconds so idle players stay visible globally
+        setInterval(() => {
+            syncPlayerState(true);
+            updateOnlineCounterBadge();
+        }, 2500);
+
+        /**************************************************************
+         * 11. CAMERA & PHYSICS UPDATE LOOP
+         **************************************************************/
+        const camera = { x: 0, y: 0 };
+
+        function updateCamera() {
+            if (player.location === 'road') {
+                const targetX = player.x - canvas.width / 2;
+                const targetY = player.y - canvas.height / 2;
+                camera.x += (targetX - camera.x) * 0.14;
+                camera.y += (targetY - camera.y) * 0.14;
+                camera.x = Math.max(0, Math.min(WORLD.width - canvas.width, camera.x));
+                camera.y = Math.max(0, Math.min(WORLD.height - canvas.height, camera.y));
+            } else if (player.location === 'chhat') {
+                const targetX = player.x - canvas.width / 2;
+                const targetY = player.y - canvas.height / 2;
+                camera.x += (targetX - camera.x) * 0.15;
+                camera.y += (targetY - camera.y) * 0.15;
+            } else {
+                camera.x = INTERIOR.width / 2 - canvas.width / 2;
+                camera.y = INTERIOR.height / 2 - canvas.height / 2;
+            }
+        }
+
+        function updateMouseWorldCoords() {
+            mouse.worldX = mouse.x + camera.x;
+            mouse.worldY = mouse.y + camera.y;
+        }
+
+        let lastFrameTime = performance.now();
+
+        function updateGame(dt) {
+            if (player.speedBoostTimer > 0) player.speedBoostTimer -= dt;
+
+            let moveX = 0;
+            let moveY = 0;
+            if (keys['w'] || keys['arrowup']) moveY -= 1;
+            if (keys['s'] || keys['arrowdown']) moveY += 1;
+            if (keys['a'] || keys['arrowleft']) moveX -= 1;
+            if (keys['d'] || keys['arrowright']) moveX += 1;
+
+            if (joystick.active) {
+                moveX = joystick.dx;
+                moveY = joystick.dy;
+            } else if (moveX !== 0 && moveY !== 0) {
+                const inv = 1 / Math.hypot(moveX, moveY);
+                moveX *= inv;
+                moveY *= inv;
+            }
+
+            let currentSpeed = player.baseSpeed;
+            if (player.onScooty && player.location === 'road') currentSpeed = 470;
+            else if (player.speedBoostTimer > 0) currentSpeed = 375;
+
+            const nextX = player.x + moveX * currentSpeed * dt;
+            const nextY = player.y + moveY * currentSpeed * dt;
+
+            if (player.location === 'road') {
+                let canX = nextX > 50 && nextX < WORLD.width - 50;
+                let canY = nextY > 50 && nextY < WORLD.height - 50;
+
+                const obstacles = [...HOUSES, ...BAZAAR_SHOPS];
+                for (const ob of obstacles) {
+                    if (nextX > ob.x - 20 && nextX < ob.x + ob.w + 20 && player.y > ob.y - 20 && player.y < ob.y + ob.h + 20) {
+                        canX = false;
+                    }
+                    if (player.x > ob.x - 20 && player.x < ob.x + ob.w + 20 && nextY > ob.y - 20 && nextY < ob.y + ob.h + 20) {
+                        canY = false;
+                    }
+                }
+                if (canX) player.x = nextX;
+                if (canY) player.y = nextY;
+
+                if (player.onScooty && (Math.abs(moveX) > 0.05 || Math.abs(moveY) > 0.05)) {
+                    player.angle = Math.atan2(moveY, moveX);
+                    if (Math.random() < 0.55) {
+                        particles.push({
+                            x: player.x - Math.cos(player.angle) * 28,
+                            y: player.y - Math.sin(player.angle) * 28,
+                            vx: (Math.random() - 0.5) * 25,
+                            vy: (Math.random() - 0.5) * 25,
+                            life: 0.4, maxLife: 0.4,
+                            size: 5 + Math.random() * 4,
+                            color: 'rgba(203, 213, 225, 0.35)',
+                            gravity: -10, drag: 0.94
+                        });
+                    }
+                }
+            } else if (player.location === 'chhat') {
+                player.x = Math.max(80, Math.min(CHHAT_ZONE.width - 80, nextX));
+                player.y = Math.max(250, Math.min(CHHAT_ZONE.height - 60, nextY));
+            } else {
+                player.x = Math.max(65, Math.min(INTERIOR.width - 65, nextX));
+                player.y = Math.max(100, Math.min(INTERIOR.height - 40, nextY));
+            }
+
+            updateCamera();
+            updateMouseWorldCoords();
+
+            if (!player.onScooty || (Math.abs(moveX) < 0.05 && Math.abs(moveY) < 0.05)) {
+                if (joystick.active && (Math.abs(joystick.dx) > 0.1 || Math.abs(joystick.dy) > 0.1)) {
+                    player.angle = Math.atan2(joystick.dy, joystick.dx);
+                } else {
+                    player.angle = Math.atan2(mouse.worldY - player.y, mouse.worldX - player.x);
+                }
+            }
+
+            if (player.chatTimer > 0) player.chatTimer -= dt;
+
+            const coordsEl = document.getElementById('coordsText');
+            if (coordsEl) coordsEl.textContent = `${Math.round(player.x)}, ${Math.round(player.y)}`;
+
+            if (player.sparklerActive || player.selectedSlot === 4) {
+                const hx = player.x + Math.cos(player.angle) * 22;
+                const hy = player.y + Math.sin(player.angle) * 22;
+                for (let i = 0; i < 2; i++) {
+                    const a = Math.random() * Math.PI * 2;
+                    const sp = 25 + Math.random() * 65;
+                    particles.push({
+                        x: hx, y: hy,
+                        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+                        life: 0.22, maxLife: 0.22, size: 2.2,
+                        color: Math.random() > 0.3 ? '#fde047' : '#ffffff',
+                        gravity: 25, drag: 0.92
+                    });
+                }
+            }
+
+            checkNearbyInteractions();
+
+            if (Math.abs(moveX) > 0.01 || Math.abs(moveY) > 0.01) {
+                syncPlayerState(false);
+            }
+
+            // Update AI Dost Squad
+            if (aiEnabled && player.location === 'road') {
+                aiFriends.forEach((bot, idx) => {
+                    const dx = bot.targetX - bot.x;
+                    const dy = bot.targetY - bot.y;
+                    const dist = Math.hypot(dx, dy);
+                    if (dist > 8) {
+                        bot.x += (dx / dist) * 145 * dt;
+                        bot.y += (dy / dist) * 145 * dt;
+                        bot.angle = Math.atan2(dy, dx);
+                    }
+                    if (bot.chatTimer > 0) bot.chatTimer -= dt;
+
+                    bot.timer -= dt;
+                    if (bot.timer <= 0) {
+                        bot.timer = 3.5 + Math.random() * 4.5;
+                        if (Math.random() < 0.65) {
+                            bot.targetX = Math.max(280, Math.min(WORLD.width - 280, player.x + (Math.random() - 0.5) * 650));
+                            bot.targetY = player.y > 1100 ? (1470 + Math.random() * 240) : (660 + Math.random() * 190);
+                        } else {
+                            bot.targetX = 400 + Math.random() * 2400;
+                            bot.targetY = idx < 2 ? (660 + Math.random() * 190) : (1480 + Math.random() * 230);
+                        }
+
+                        if (Math.random() < 0.5) {
+                            const choices = [0, 1, 2, 5, 6];
+                            const fwChoice = choices[Math.floor(Math.random() * choices.length)];
+                            const tx = bot.x + (Math.random() - 0.5) * 450;
+                            const ty = bot.y - 200 - Math.random() * 220;
+                            spawnFirework(fwChoice, bot.x, bot.y, tx, ty, bot.name, true);
+                        }
+                        if (Math.random() < 0.45) {
+                            bot.chatText = AI_DIALOGUES[Math.floor(Math.random() * AI_DIALOGUES.length)];
+                            bot.chatTimer = 4.5;
+                        }
+                    }
+                });
+            }
+
+            // Update Active Fireworks
+            for (let i = activeFireworks.length - 1; i >= 0; i--) {
+                const fw = activeFireworks[i];
+                fw.timer -= dt;
+
+                if (fw.type === 'rocket') {
+                    fw.x += fw.vx * dt;
+                    fw.y += fw.vy * dt;
+                    for (let s = 0; s < 3; s++) {
+                        particles.push({
+                            x: fw.x - Math.cos(fw.angle) * 10,
+                            y: fw.y - Math.sin(fw.angle) * 10,
+                            vx: -fw.vx * 0.14 + (Math.random() - 0.5) * 40,
+                            vy: -fw.vy * 0.14 + (Math.random() - 0.5) * 40,
+                            life: 0.25, maxLife: 0.25, size: 2.8,
+                            color: Math.random() > 0.3 ? '#fbbf24' : '#f97316',
+                            gravity: 10, drag: 0.92
+                        });
+                    }
+                    if (fw.timer <= 0) {
+                        createRocketBurst(fw.x, fw.y, fw.color, fw.isSkyShot);
+                        activeFireworks.splice(i, 1);
+                    }
+                } else if (fw.type === 'anar') {
+                    if (Math.random() < 0.35) sfx.playCrackle();
+                    for (let s = 0; s < 5; s++) {
+                        const a = -Math.PI / 2 + (Math.random() - 0.5) * 0.85;
+                        const sp = 140 + Math.random() * 200;
+                        const colors = ['#fde047', '#fbbf24', '#f43f5e', '#ffffff', '#38bdf8'];
+                        particles.push({
+                            x: fw.x, y: fw.y - 8,
+                            vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+                            life: 0.5 + Math.random() * 0.4, maxLife: 0.9,
+                            size: 2.6 + Math.random() * 2,
+                            color: colors[Math.floor(Math.random() * colors.length)],
+                            gravity: 260, drag: 0.97
+                        });
+                    }
+                    if (fw.timer <= 0) activeFireworks.splice(i, 1);
+                } else if (fw.type === 'chakri') {
+                    fw.spinAngle += 24 * dt;
+                    fw.x += fw.vx * dt;
+                    fw.y += fw.vy * dt;
+                    if (Math.random() < 0.3) sfx.playCrackle();
+                    for (let arm = 0; arm < 3; arm++) {
+                        const a = fw.spinAngle + (arm * Math.PI * 2) / 3;
+                        const sp = 155 + Math.random() * 60;
+                        particles.push({
+                            x: fw.x, y: fw.y,
+                            vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+                            life: 0.32, maxLife: 0.32, size: 2.6,
+                            color: arm === 0 ? '#10b981' : (arm === 1 ? '#f43f5e' : '#fde047'),
+                            gravity: 0, drag: 0.93
+                        });
+                    }
+                    if (fw.timer <= 0) activeFireworks.splice(i, 1);
+                } else if (fw.type === 'sutli') {
+                    if (Math.random() < 0.7) {
+                        const a = -Math.PI / 2 + (Math.random() - 0.5) * 1.4;
+                        particles.push({
+                            x: fw.x + 6, y: fw.y - 10,
+                            vx: Math.cos(a) * 55, vy: Math.sin(a) * 55,
+                            life: 0.18, maxLife: 0.18, size: 2.2, color: '#ef4444', gravity: 20, drag: 0.9
+                        });
+                    }
+                    if (fw.timer <= 0) {
+                        createSutliExplosion(fw.x, fw.y);
+                        activeFireworks.splice(i, 1);
+                    }
+                } else if (fw.type === 'skyshot_box') {
+                    fw.nextShotDelay -= dt;
+                    if (fw.nextShotDelay <= 0 && fw.shotsRemaining > 0) {
+                        fw.shotsRemaining--;
+                        fw.nextShotDelay = 0.42;
+                        sfx.playRocketWhistle();
+                        const colors = ['#f43f5e', '#38bdf8', '#a855f7', '#10b981', '#facc15', '#fb923c'];
+                        const angle = -Math.PI / 2 + (Math.random() - 0.5) * 0.55;
+                        const speed = 690;
+                        activeFireworks.push({
+                            type: 'rocket',
+                            x: fw.x, y: fw.y - 10,
+                            vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+                            angle, timer: 0.42 + Math.random() * 0.2,
+                            color: colors[fw.shotsRemaining % colors.length],
+                            isSkyShot: true
+                        });
+                    }
+                    if (fw.shotsRemaining <= 0 || fw.timer <= 0) {
+                        activeFireworks.splice(i, 1);
+                    }
+                } else if (fw.type === 'ladi') {
+                    fw.stepTimer -= dt;
+                    if (fw.stepTimer <= 0 && fw.currentIndex < fw.nodes.length) {
+                        fw.stepTimer = 0.075;
+                        const node = fw.nodes[fw.currentIndex];
+                        node.exploded = true;
+                        fw.currentIndex++;
+
+                        sfx.playBoom(0.65);
+                        screenShake = Math.max(screenShake, 8);
+                        skyFlashAlpha = 0.16;
+                        skyFlashColor = '#ef4444';
+
+                        shockwaves.push({ x: node.x, y: node.y, radius: 4, maxRadius: 75, alpha: 0.75, color: '#fb923c' });
+
+                        for (let p = 0; p < 18; p++) {
+                            const a = Math.random() * Math.PI * 2;
+                            const sp = 40 + Math.random() * 170;
+                            particles.push({
+                                x: node.x, y: node.y,
+                                vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+                                life: 0.25 + Math.random() * 0.25, maxLife: 0.5,
+                                size: 2.5 + Math.random() * 2,
+                                color: Math.random() > 0.4 ? '#fde047' : '#ef4444',
+                                gravity: 30, drag: 0.93
+                            });
+                        }
+                        particles.push({
+                            x: node.x, y: node.y,
+                            vx: (Math.random() - 0.5) * 35, vy: -20,
+                            life: 0.9, maxLife: 0.9, size: 10,
+                            color: 'rgba(148, 163, 184, 0.3)', gravity: -8, drag: 0.96
+                        });
+                    }
+                    if (fw.currentIndex >= fw.nodes.length || fw.timer <= 0) {
+                        activeFireworks.splice(i, 1);
+                    }
+                }
+            }
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.life -= dt;
+                if (p.life <= 0) {
+                    particles.splice(i, 1);
+                    continue;
+                }
+                p.vx *= p.drag;
+                p.vy *= p.drag;
+                p.vy += (p.gravity || 0) * dt;
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
+            }
+
+            for (let i = shockwaves.length - 1; i >= 0; i--) {
+                const sw = shockwaves[i];
+                sw.radius += 480 * dt;
+                sw.alpha -= 1.65 * dt;
+                if (sw.alpha <= 0 || sw.radius >= sw.maxRadius) {
+                    shockwaves.splice(i, 1);
+                }
+            }
+
+            skyLanterns.forEach(lan => {
+                lan.x += lan.vx * dt;
+                lan.y += lan.vy * dt;
+                if (lan.y < -100) lan.y = WORLD.height + 60;
+                if (lan.x > WORLD.width + 100) lan.x = -60;
+            });
+
+            if (screenShake > 0) screenShake = Math.max(0, screenShake - 40 * dt);
+            if (skyFlashAlpha > 0) skyFlashAlpha = Math.max(0, skyFlashAlpha - 0.95 * dt);
+        }
+
+        /**************************************************************
+         * 12. RENDERING ENGINE (World, Posters, Lighting, Scooty, Chhat)
+         **************************************************************/
+        function drawRangoli(x, y, radius, c1, c2, time) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(Math.sin(time * 0.5) * 0.05);
+            for (let i = 0; i < 8; i++) {
+                ctx.save();
+                ctx.rotate((Math.PI * 2 * i) / 8);
+                ctx.fillStyle = i % 2 === 0 ? c1 : c2;
+                ctx.beginPath();
+                ctx.arc(radius * 0.62, 0, radius * 0.36, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(0, 0, radius * 0.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = c1;
+            ctx.beginPath();
+            ctx.arc(0, 0, radius * 0.35, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#fde047';
+            ctx.beginPath();
+            ctx.arc(0, 0, radius * 0.16, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function drawDiya(x, y, lit, time) {
+            ctx.save();
+            ctx.translate(x, y);
+            if (lit) {
+                const flicker = 22 + Math.sin(time * 15 + x) * 4;
+                const grad = ctx.createRadialGradient(0, -3, 2, 0, -3, flicker);
+                grad.addColorStop(0, 'rgba(251, 191, 36, 0.85)');
+                grad.addColorStop(1, 'rgba(251, 191, 36, 0)');
+                ctx.fillStyle = grad;
+                ctx.beginPath();
+                ctx.arc(0, -3, flicker, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.fillStyle = '#b45309';
+            ctx.strokeStyle = '#fbbf24';
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.arc(0, 2, 7.5, 0, Math.PI);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            if (lit) {
+                ctx.fillStyle = '#fde047';
+                ctx.beginPath();
+                ctx.ellipse(0, -3, 3.2, 6, 0, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        }
+
+        function drawWelcomeArch(x, y, width, titleText, subText, time) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.fillStyle = '#7c2d12';
+            ctx.strokeStyle = '#fbbf24';
+            ctx.lineWidth = 3;
+            ctx.fillRect(-width / 2, -20, 22, 55);
+            ctx.fillRect(width / 2 - 22, -20, 22, 55);
+
+            const grad = ctx.createLinearGradient(-width / 2, 0, width / 2, 0);
+            grad.addColorStop(0, '#991b1b');
+            grad.addColorStop(0.5, '#d97706');
+            grad.addColorStop(1, '#991b1b');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.roundRect(-width / 2 - 8, -42, width + 16, 42, 12);
+            ctx.fill();
+            ctx.stroke();
+
+            const numBulbs = 14;
+            for (let i = 0; i <= numBulbs; i++) {
+                const bx = -width / 2 + (width * i) / numBulbs;
+                ctx.fillStyle = (i + Math.floor(time * 6)) % 2 === 0 ? '#fde047' : '#fb923c';
+                ctx.beginPath();
+                ctx.arc(bx, 2, 4.5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            ctx.fillStyle = '#fef08a';
+            ctx.font = 'bold 14px Fredoka, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(titleText, 0, -22);
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '600 10px Inter, sans-serif';
+            ctx.fillText(subText, 0, -8);
+            ctx.restore();
+        }
+
+        function drawBillboard(b, time) {
+            ctx.save();
+            ctx.fillStyle = '#334155';
+            ctx.fillRect(b.x + 28, b.y + b.h, 10, 24);
+            ctx.fillRect(b.x + b.w - 38, b.y + b.h, 10, 24);
+
+            if (lightingQuality === 'ULTRA') {
+                const glow = ctx.createRadialGradient(b.x + b.w / 2, b.y + b.h / 2, 10, b.x + b.w / 2, b.y + b.h / 2, b.w * 0.7);
+                glow.addColorStop(0, 'rgba(251, 191, 36, 0.16)');
+                glow.addColorStop(1, 'rgba(251, 191, 36, 0)');
+                ctx.fillStyle = glow;
+                ctx.beginPath();
+                ctx.arc(b.x + b.w / 2, b.y + b.h / 2, b.w * 0.7, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            const grad = ctx.createLinearGradient(b.x, b.y, b.x + b.w, b.y + b.h);
+            grad.addColorStop(0, b.bg1);
+            grad.addColorStop(1, b.bg2);
+            ctx.fillStyle = grad;
+            ctx.strokeStyle = b.border;
+            ctx.lineWidth = 3.5;
+            ctx.beginPath();
+            ctx.roundRect(b.x, b.y, b.w, b.h, 12);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = b.border;
+            ctx.beginPath();
+            ctx.roundRect(b.x + 12, b.y + 10, 145, 18, 6);
+            ctx.fill();
+            ctx.fillStyle = '#090d16';
+            ctx.font = 'bold 10px Inter, sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText(b.tag, b.x + 20, b.y + 23);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 15px Fredoka, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(b.title, b.x + b.w / 2, b.y + 52);
+
+            ctx.fillStyle = '#fef08a';
+            ctx.font = '500 11px Inter, sans-serif';
+            ctx.fillText(b.sub, b.x + b.w / 2, b.y + 74);
+
+            for (let l = 0; l < 3; l++) {
+                const lx = b.x + (b.w * (l + 0.5)) / 3;
+                ctx.fillStyle = '#fde047';
+                ctx.beginPath();
+                ctx.arc(lx, b.y - 3, 4, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        }
+
+        function drawScooty(x, y, angle, neonColor, withHeadlight = true) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angle);
+
+            const neonGrad = ctx.createRadialGradient(0, 0, 4, 0, 0, 44);
+            neonGrad.addColorStop(0, neonColor);
+            neonGrad.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.save();
+            ctx.globalAlpha = 0.45;
+            ctx.fillStyle = neonGrad;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, 42, 26, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+
+            if (withHeadlight) {
+                const beamGrad = ctx.createLinearGradient(18, 0, 250, 0);
+                beamGrad.addColorStop(0, 'rgba(254, 240, 138, 0.52)');
+                beamGrad.addColorStop(0.5, 'rgba(254, 240, 138, 0.18)');
+                beamGrad.addColorStop(1, 'rgba(254, 240, 138, 0)');
+                ctx.fillStyle = beamGrad;
+                ctx.beginPath();
+                ctx.moveTo(18, -4);
+                ctx.lineTo(250, -78);
+                ctx.lineTo(250, 78);
+                ctx.lineTo(18, 4);
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            ctx.fillStyle = '#f8fafc';
+            ctx.strokeStyle = '#0f172a';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.roundRect(-24, -12, 46, 24, 10);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = '#334155';
+            ctx.beginPath();
+            ctx.roundRect(-6, -9, 18, 18, 4);
+            ctx.fill();
+
+            ctx.fillStyle = '#451a03';
+            ctx.beginPath();
+            ctx.roundRect(-22, -9, 20, 18, 6);
+            ctx.fill();
+
+            ctx.strokeStyle = '#94a3b8';
+            ctx.lineWidth = 3.5;
+            ctx.beginPath();
+            ctx.moveTo(14, -15);
+            ctx.lineTo(14, 15);
+            ctx.stroke();
+
+            ctx.fillStyle = '#fef08a';
+            ctx.beginPath();
+            ctx.arc(20, 0, 4.5, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#ef4444';
+            ctx.beginPath();
+            ctx.arc(-24, 0, 3.5, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        function drawCharacter(x, y, angle, name, color, sparkler, chatText, chatTimer, isLocal = false, onScooty = false, scootyNeon = '#06b6d4') {
+            if (onScooty) {
+                drawScooty(x, y, angle, scootyNeon, true);
+            }
+
+            ctx.save();
+            ctx.translate(x, y);
+
+            if (!onScooty) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+                ctx.beginPath();
+                ctx.ellipse(0, 12, 16, 8, 0, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            if (isLocal) {
+                ctx.strokeStyle = 'rgba(251, 191, 36, 0.8)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(0, 2, onScooty ? 28 : 22, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            ctx.save();
+            ctx.rotate(angle);
+
+            ctx.fillStyle = '#fcd34d';
+            ctx.beginPath();
+            ctx.arc(14, -10, 5, 0, Math.PI * 2);
+            ctx.arc(14, 10, 5, 0, Math.PI * 2);
+            ctx.fill();
+
+            if (sparkler) {
+                ctx.strokeStyle = '#cbd5e1';
+                ctx.lineWidth = 2.2;
+                ctx.beginPath();
+                ctx.moveTo(14, 10);
+                ctx.lineTo(26, 12);
+                ctx.stroke();
+            }
+
+            ctx.fillStyle = color;
+            ctx.strokeStyle = '#fde68a';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.roundRect(-13, -15, 24, 30, 10);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = '#fde68a';
+            ctx.beginPath();
+            ctx.arc(0, 0, 11, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#1e1b4b';
+            ctx.beginPath();
+            ctx.arc(-2, 0, 10.5, Math.PI * 0.55, Math.PI * 1.45);
+            ctx.fill();
+
+            ctx.fillStyle = '#0f172a';
+            ctx.beginPath();
+            ctx.arc(5, -4, 1.8, 0, Math.PI * 2);
+            ctx.arc(5, 4, 1.8, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+
+            ctx.font = '600 12px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            const tagWidth = ctx.measureText(name).width + 14;
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.78)';
+            ctx.beginPath();
+            ctx.roundRect(-tagWidth / 2, 20, tagWidth, 18, 6);
+            ctx.fill();
+            ctx.fillStyle = isLocal ? '#fde047' : '#f8fafc';
+            ctx.fillText(name, 0, 33);
+
+            if (chatText && chatTimer > 0) {
+                ctx.font = '600 12px Inter, sans-serif';
+                const maxBubbleText = chatText.length > 52 ? chatText.slice(0, 52) + '...' : chatText;
+                const bw = Math.min(310, Math.max(95, ctx.measureText(maxBubbleText).width + 22));
+                const by = -50;
+                ctx.fillStyle = 'rgba(255, 251, 235, 0.94)';
+                ctx.strokeStyle = '#f59e0b';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.roundRect(-bw / 2, by, bw, 26, 10);
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.fillStyle = '#0f172a';
+                ctx.fillText(maxBubbleText, 0, by + 17);
+            }
+
+            ctx.restore();
+        }
+
+        function renderSocietyAndBazaarWorld(time) {
+            ctx.fillStyle = '#090d1a';
+            ctx.fillRect(0, 0, WORLD.width, WORLD.height);
+
+            ctx.strokeStyle = 'rgba(30, 41, 59, 0.45)';
+            ctx.lineWidth = 1;
+            for (let gx = 0; gx < WORLD.width; gx += 100) {
+                ctx.beginPath();
+                ctx.moveTo(gx, 0);
+                ctx.lineTo(gx, WORLD.height);
+                ctx.stroke();
+            }
+            for (let gy = 0; gy < WORLD.height; gy += 100) {
+                ctx.beginPath();
+                ctx.moveTo(0, gy);
+                ctx.lineTo(WORLD.width, gy);
+                ctx.stroke();
+            }
+
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(0, WORLD.societyRoadY, WORLD.width, WORLD.societyRoadH);
+            ctx.fillRect(0, WORLD.bazaarRoadY, WORLD.width, WORLD.bazaarRoadH);
+            ctx.fillRect(WORLD.mainAveX, 460, WORLD.mainAveW, 1340);
+
+            ctx.strokeStyle = '#f59e0b';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(0, WORLD.societyRoadY, WORLD.width, WORLD.societyRoadH);
+            ctx.strokeRect(0, WORLD.bazaarRoadY, WORLD.width, WORLD.bazaarRoadH);
+
+            ctx.save();
+            ctx.strokeStyle = 'rgba(248, 250, 252, 0.4)';
+            ctx.lineWidth = 4;
+            ctx.setLineDash([30, 26]);
+            ctx.beginPath();
+            ctx.moveTo(0, WORLD.societyRoadY + WORLD.societyRoadH / 2);
+            ctx.lineTo(WORLD.width, WORLD.societyRoadY + WORLD.societyRoadH / 2);
+            ctx.moveTo(0, WORLD.bazaarRoadY + WORLD.bazaarRoadH / 2);
+            ctx.lineTo(WORLD.width, WORLD.bazaarRoadY + WORLD.bazaarRoadH / 2);
+            ctx.moveTo(WORLD.mainAveX + WORLD.mainAveW / 2, 500);
+            ctx.lineTo(WORLD.mainAveX + WORLD.mainAveW / 2, 1740);
+            ctx.stroke();
+            ctx.restore();
+
+            ctx.fillStyle = 'rgba(241, 245, 249, 0.32)';
+            for (let z = 0; z < 6; z++) {
+                ctx.fillRect(WORLD.mainAveX + 18 + z * 36, WORLD.societyRoadY + 15, 20, 45);
+                ctx.fillRect(WORLD.mainAveX + 18 + z * 36, WORLD.bazaarRoadY - 50, 20, 42);
+            }
+
+            drawRangoli(1600, 755, 62, '#f43f5e', '#f59e0b', time);
+            drawRangoli(1600, 1600, 68, '#a855f7', '#fde047', time);
+
+            ctx.save();
+            ctx.fillStyle = '#4c1d95';
+            ctx.strokeStyle = '#c084fc';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.roundRect(CHHAT_STAIRS.x, CHHAT_STAIRS.y, CHHAT_STAIRS.w, CHHAT_STAIRS.h, 12);
+            ctx.fill();
+            ctx.stroke();
+            for (let s = 1; s < 5; s++) {
+                ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+                ctx.beginPath();
+                ctx.moveTo(CHHAT_STAIRS.x + 10, CHHAT_STAIRS.y + s * 18);
+                ctx.lineTo(CHHAT_STAIRS.x + CHHAT_STAIRS.w - 10, CHHAT_STAIRS.y + s * 18);
+                ctx.stroke();
+            }
+            ctx.fillStyle = '#fde047';
+            ctx.font = 'bold 12px Fredoka, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('🪜 CHHAT STAIRS', CHHAT_STAIRS.x + CHHAT_STAIRS.w / 2, CHHAT_STAIRS.y - 8);
+            ctx.restore();
+
+            HOUSES.forEach((h, idx) => {
+                ctx.save();
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+                ctx.beginPath();
+                ctx.roundRect(h.x + 10, h.y + 12, h.w, h.h, 16);
+                ctx.fill();
+
+                ctx.fillStyle = h.wallColor;
+                ctx.strokeStyle = h.trimColor;
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.roundRect(h.x, h.y, h.w, h.h, 16);
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.fillStyle = h.roofColor;
+                ctx.beginPath();
+                ctx.roundRect(h.x + 18, h.y + 18, h.w - 36, h.h - 36, 10);
+                ctx.fill();
+
+                const numLights = 16;
+                for (let l = 0; l <= numLights; l++) {
+                    const lx = h.x + (h.w * l) / numLights;
+                    const bulbColors = ['#fde047', '#f43f5e', '#38bdf8', '#4ade80'];
+                    ctx.fillStyle = bulbColors[(l + Math.floor(time * 5)) % bulbColors.length];
+                    ctx.beginPath();
+                    ctx.arc(lx, h.y + h.h, 4.5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+                ctx.beginPath();
+                ctx.roundRect(h.x + h.w / 2 - 115, h.y + h.h / 2 - 26, 230, 52, 10);
+                ctx.fill();
+                ctx.fillStyle = '#fde047';
+                ctx.font = 'bold 16px Fredoka, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(`🏠 ${h.name}`, h.x + h.w / 2, h.y + h.h / 2 - 4);
+                ctx.fillStyle = '#e2e8f0';
+                ctx.font = '12px Inter, sans-serif';
+                ctx.fillText(h.owner, h.x + h.w / 2, h.y + h.h / 2 + 16);
+
+                ctx.fillStyle = '#f59e0b';
+                ctx.beginPath();
+                ctx.roundRect(h.doorX - 34, h.doorY - 8, 68, 16, 4);
+                ctx.fill();
+                drawRangoli(h.doorX, h.doorY + 42, 26, h.rangoliColor1, h.rangoliColor2, time + idx);
+                ctx.restore();
+            });
+
+            BAZAAR_SHOPS.forEach((shop) => {
+                ctx.save();
+                if (lightingQuality === 'ULTRA') {
+                    const reflGrad = ctx.createRadialGradient(shop.interactX, shop.interactY + 75, 10, shop.interactX, shop.interactY + 75, 195);
+                    reflGrad.addColorStop(0, shop.neonColor);
+                    reflGrad.addColorStop(1, 'rgba(0,0,0,0)');
+                    ctx.save();
+                    ctx.globalAlpha = 0.24 + Math.sin(time * 4) * 0.04;
+                    ctx.fillStyle = reflGrad;
+                    ctx.beginPath();
+                    ctx.arc(shop.interactX, shop.interactY + 75, 195, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                }
+
+                ctx.fillStyle = shop.wallColor;
+                ctx.strokeStyle = shop.neonColor;
+                ctx.lineWidth = 3.5;
+                ctx.beginPath();
+                ctx.roundRect(shop.x, shop.y, shop.w, shop.h, 16);
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.fillStyle = shop.roofColor;
+                ctx.beginPath();
+                ctx.roundRect(shop.x + 16, shop.y + 16, shop.w - 32, shop.h - 56, 12);
+                ctx.fill();
+
+                const stripes = 10;
+                const sw = shop.w / stripes;
+                for (let s = 0; s < stripes; s++) {
+                    ctx.fillStyle = s % 2 === 0 ? shop.awning1 : shop.awning2;
+                    ctx.fillRect(shop.x + s * sw, shop.y + shop.h - 32, sw, 32);
+                }
+
+                ctx.fillStyle = 'rgba(9, 13, 24, 0.92)';
+                ctx.strokeStyle = shop.neonColor;
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                ctx.roundRect(shop.x + 28, shop.y + 42, shop.w - 56, 76, 12);
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 18px Fredoka, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(`${shop.icon} ${shop.name}`, shop.x + shop.w / 2, shop.y + 74);
+
+                ctx.fillStyle = '#fde047';
+                ctx.font = '600 12px Inter, sans-serif';
+                ctx.fillText(shop.subtitle, shop.x + shop.w / 2, shop.y + 98);
+
+                ctx.fillStyle = shop.neonColor;
+                ctx.beginPath();
+                ctx.roundRect(shop.interactX - 55, shop.interactY - 12, 110, 24, 8);
+                ctx.fill();
+                ctx.fillStyle = '#090d16';
+                ctx.font = 'bold 11px Inter, sans-serif';
+                ctx.fillText('TAP / [E] SHOP', shop.interactX, shop.interactY + 4);
+
+                ctx.restore();
+            });
+
+            STREET_BILLBOARDS.forEach(b => drawBillboard(b, time));
+
+            drawWelcomeArch(1600, 560, 260, '✨ SHANTI SOCIETY WELCOMES YOU ✨', 'GLOBAL PUBLIC SERVER • AUTO JOIN', time);
+            drawWelcomeArch(1600, 1410, 270, '🛍️ DIWALI MAIN BAZAAR ROAD 🛍️', 'GRAND FESTIVAL SHOPPING MELA', time);
+
+            PARKED_VEHICLES.forEach(v => {
+                ctx.save();
+                ctx.translate(v.x, v.y);
+                ctx.rotate(v.angle);
+                if (v.type === 'auto') {
+                    ctx.fillStyle = '#15803d';
+                    ctx.strokeStyle = '#facc15';
+                    ctx.lineWidth = 2.5;
+                    ctx.beginPath();
+                    ctx.roundRect(-28, -16, 56, 32, 10);
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.fillStyle = '#facc15';
+                    ctx.fillRect(6, -15, 20, 30);
+                    ctx.fillStyle = '#0f172a';
+                    ctx.font = 'bold 8px Inter, sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(v.label, -8, 3);
+                } else {
+                    ctx.fillStyle = v.color;
+                    ctx.strokeStyle = '#e2e8f0';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.roundRect(-36, -18, 72, 36, 10);
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.fillStyle = '#1e293b';
+                    ctx.fillRect(-18, -14, 36, 28);
+                }
+                ctx.restore();
+            });
+
+            if (!player.onScooty) {
+                drawScooty(parkedScooty.x, parkedScooty.y, parkedScooty.angle, player.scootyNeon, false);
+            }
+
+            for (let sx = 240; sx <= 2960; sx += 340) {
+                [WORLD.societyRoadY - 12, WORLD.bazaarRoadY - 12].forEach(sy => {
+                    const grad = ctx.createRadialGradient(sx, sy, 4, sx, sy, 115);
+                    grad.addColorStop(0, 'rgba(253, 224, 71, 0.34)');
+                    grad.addColorStop(1, 'rgba(253, 224, 71, 0)');
+                    ctx.fillStyle = grad;
+                    ctx.beginPath();
+                    ctx.arc(sx, sy, 115, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.fillStyle = '#fde047';
+                    ctx.beginPath();
+                    ctx.arc(sx, sy, 5.5, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+            }
+
+            OUTDOOR_DIYAS.forEach(d => drawDiya(d.x, d.y, d.lit, time));
+        }
+
+        function renderSocietyChhat(time) {
+            ctx.fillStyle = '#040309';
+            ctx.fillRect(-600, -600, CHHAT_ZONE.width + 1200, CHHAT_ZONE.height + 1200);
+
+            ctx.fillStyle = '#1e3a8a';
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.roundRect(180, 20, 940, 170, 16);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = '#fde047';
+            ctx.font = 'bold 18px Fredoka, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('🏠 SHARMA JI KI CHHAT (Aim Sky-Shots & Rockets Here!)', 650, 62);
+
+            drawCharacter(650, 125, Math.PI / 2, 'Sharma Ji (Neighbor)', '#38bdf8', false, 'Oye! Meri chhat aur paani ki tanki pe Rocket mat marna! 👀😂', 10, false);
+
+            ctx.fillStyle = '#334155';
+            ctx.strokeStyle = '#fbbf24';
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.roundRect(40, 230, CHHAT_ZONE.width - 80, CHHAT_ZONE.height - 250, 20);
+            ctx.fill();
+            ctx.stroke();
+
+            for (let i = 0; i < 28; i++) {
+                const bx = 65 + i * 43;
+                const colors = ['#fde047', '#f43f5e', '#38bdf8', '#a855f7', '#4ade80'];
+                ctx.fillStyle = colors[(i + Math.floor(time * 6)) % colors.length];
+                ctx.beginPath();
+                ctx.arc(bx, 234, 5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            drawRangoli(650, 480, 56, '#a855f7', '#fde047', time);
+
+            ctx.fillStyle = '#0f172a';
+            ctx.strokeStyle = '#64748b';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(180, 340, 52, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.fillStyle = '#cbd5e1';
+            ctx.font = 'bold 11px Inter, sans-serif';
+            ctx.fillText('SHANTI TANK', 180, 344);
+
+            ctx.fillStyle = '#10b981';
+            ctx.beginPath();
+            ctx.roundRect(CHHAT_ZONE.stairsX - 75, CHHAT_ZONE.stairsY - 16, 150, 32, 10);
+            ctx.fill();
+            ctx.fillStyle = '#052e16';
+            ctx.font = 'bold 13px Inter, sans-serif';
+            ctx.fillText('🪜 GO DOWN TO ROAD [E]', CHHAT_ZONE.stairsX, CHHAT_ZONE.stairsY + 4);
+        }
+
+        function renderHouseInterior(time) {
+            const house = HOUSES.find(h => h.id === player.location) || HOUSES[0];
+
+            ctx.fillStyle = house.interiorFloor;
+            ctx.strokeStyle = '#fbbf24';
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.roundRect(0, 0, INTERIOR.width, INTERIOR.height, 20);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = house.interiorWall;
+            ctx.fillRect(6, 6, INTERIOR.width - 12, 85);
+
+            for (let i = 0; i < 19; i++) {
+                const bx = 30 + i * 44;
+                const colors = ['#fde047', '#f43f5e', '#38bdf8', '#4ade80'];
+                ctx.fillStyle = colors[(i + Math.floor(time * 5)) % colors.length];
+                ctx.beginPath();
+                ctx.arc(bx, 88, 5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            ctx.fillStyle = '#fde047';
+            ctx.font = 'bold 20px Fredoka, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(`🪔 Welcome to ${house.name} 🪔`, INTERIOR.width / 2, 42);
+            ctx.fillStyle = '#fef3c7';
+            ctx.font = '13px Inter, sans-serif';
+            ctx.fillText(house.greeting, INTERIOR.width / 2, 68);
+
+            drawRangoli(INTERIOR.width / 2, 445, 36, house.rangoliColor1, house.rangoliColor2, time);
+
+            ctx.fillStyle = '#78350f';
+            ctx.strokeStyle = '#fbbf24';
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.roundRect(INTERIOR.mithaiX - 70, INTERIOR.mithaiY - 35, 140, 70, 12);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.font = '20px sans-serif';
+            ctx.fillText('🍬', INTERIOR.mithaiX - 25, INTERIOR.mithaiY + 6);
+            ctx.fillText('🎁', INTERIOR.mithaiX + 25, INTERIOR.mithaiY + 6);
+
+            ctx.fillStyle = '#fde047';
+            ctx.font = 'bold 11px Inter, sans-serif';
+            ctx.fillText('Kaju Katli & Gift Shagun [Tap E]', INTERIOR.mithaiX, INTERIOR.mithaiY + 52);
+
+            drawCharacter(
+                INTERIOR.npcX,
+                INTERIOR.npcY,
+                Math.PI / 2,
+                house.owner,
+                house.trimColor,
+                false,
+                'Aao beta! Kaju Katli khao aur Diye jalao! 🍬🪔',
+                10,
+                false
+            );
+
+            INTERIOR.diyas.forEach(d => drawDiya(d.x, d.y, d.lit, time));
+
+            ctx.fillStyle = '#10b981';
+            ctx.beginPath();
+            ctx.roundRect(INTERIOR.doorX - 60, INTERIOR.doorY - 14, 120, 28, 8);
+            ctx.fill();
+            ctx.fillStyle = '#052e16';
+            ctx.font = 'bold 12px Inter, sans-serif';
+            ctx.fillText('🚪 EXIT TO ROAD [E]', INTERIOR.doorX, INTERIOR.doorY + 4);
+        }
+
+        function renderFireworksAndParticles(time) {
+            shockwaves.forEach(sw => {
+                ctx.save();
+                ctx.strokeStyle = sw.color;
+                ctx.globalAlpha = Math.max(0, sw.alpha);
+                ctx.lineWidth = 5;
+                ctx.beginPath();
+                ctx.arc(sw.x, sw.y, sw.radius, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+            });
+
+            activeFireworks.forEach(fw => {
+                ctx.save();
+                if (fw.type === 'ladi') {
+                    fw.nodes.forEach((n, idx) => {
+                        if (!n.exploded) {
+                            ctx.fillStyle = idx % 2 === 0 ? '#dc2626' : '#b91c1c';
+                            ctx.strokeStyle = '#fde047';
+                            ctx.lineWidth = 1;
+                            ctx.beginPath();
+                            ctx.roundRect(n.x - 5, n.y - 4, 10, 8, 2);
+                            ctx.fill();
+                            ctx.stroke();
+                        }
+                    });
+                } else {
+                    ctx.translate(fw.x, fw.y);
+                    if (fw.type === 'rocket') {
+                        ctx.rotate(fw.angle);
+                        ctx.fillStyle = fw.color;
+                        ctx.beginPath();
+                        ctx.roundRect(-10, -4, 20, 8, 3);
+                        ctx.fill();
+                    } else if (fw.type === 'anar') {
+                        ctx.fillStyle = '#ec4899';
+                        ctx.strokeStyle = '#fde047';
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        ctx.moveTo(0, -12);
+                        ctx.lineTo(11, 10);
+                        ctx.lineTo(-11, 10);
+                        ctx.closePath();
+                        ctx.fill();
+                        ctx.stroke();
+                    } else if (fw.type === 'chakri') {
+                        ctx.rotate(fw.spinAngle);
+                        ctx.fillStyle = '#10b981';
+                        ctx.strokeStyle = '#ffffff';
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        ctx.arc(0, 0, 9, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.stroke();
+                    } else if (fw.type === 'sutli') {
+                        const pulse = 18 + Math.sin(time * 24) * 8;
+                        ctx.fillStyle = 'rgba(239, 68, 68, 0.28)';
+                        ctx.beginPath();
+                        ctx.arc(0, 0, pulse, 0, Math.PI * 2);
+                        ctx.fill();
+
+                        ctx.fillStyle = '#15803d';
+                        ctx.strokeStyle = '#dc2626';
+                        ctx.lineWidth = 2.5;
+                        ctx.beginPath();
+                        ctx.roundRect(-9, -9, 18, 18, 4);
+                        ctx.fill();
+                        ctx.stroke();
+
+                        ctx.fillStyle = '#fef08a';
+                        ctx.font = 'bold 16px Fredoka, sans-serif';
+                        ctx.textAlign = 'center';
+                        ctx.fillText(Math.ceil(fw.timer) + 's!', 0, -16);
+                    } else if (fw.type === 'skyshot_box') {
+                        ctx.fillStyle = '#581c87';
+                        ctx.strokeStyle = '#facc15';
+                        ctx.lineWidth = 2.5;
+                        ctx.beginPath();
+                        ctx.roundRect(-14, -14, 28, 28, 5);
+                        ctx.fill();
+                        ctx.stroke();
+                        ctx.fillStyle = '#fde047';
+                        ctx.font = 'bold 11px Inter, sans-serif';
+                        ctx.textAlign = 'center';
+                        ctx.fillText(`${fw.shotsRemaining}🎆`, 0, -18);
+                    }
+                }
+                ctx.restore();
+            });
+
+            ctx.save();
+            if (lightingQuality === 'ULTRA') {
+                ctx.globalCompositeOperation = 'lighter';
+            }
+            particles.forEach(p => {
+                const alpha = Math.max(0, p.life / p.maxLife);
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.restore();
+
+            if (player.location === 'road' || player.location === 'chhat') {
+                skyLanterns.forEach(lan => {
+                    ctx.save();
+                    ctx.translate(lan.x, lan.y + Math.sin(time * 2 + lan.phase) * 6);
+                    const grad = ctx.createRadialGradient(0, 0, 2, 0, 0, lan.size * 2.4);
+                    grad.addColorStop(0, 'rgba(251, 146, 60, 0.85)');
+                    grad.addColorStop(1, 'rgba(251, 146, 60, 0)');
+                    ctx.fillStyle = grad;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, lan.size * 2.4, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.fillStyle = '#fb923c';
+                    ctx.strokeStyle = '#fef08a';
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    ctx.roundRect(-lan.size * 0.55, -lan.size * 0.7, lan.size * 1.1, lan.size * 1.4, 5);
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.restore();
+                });
+            }
+        }
+
+        function renderRadarMinimap() {
+            const mw = minimapCanvas.width;
+            const mh = minimapCanvas.height;
+            const scaleX = mw / WORLD.width;
+            const scaleY = mh / WORLD.height;
+
+            miniCtx.fillStyle = '#090d1a';
+            miniCtx.fillRect(0, 0, mw, mh);
+
+            miniCtx.fillStyle = '#334155';
+            miniCtx.fillRect(0, WORLD.societyRoadY * scaleY, mw, WORLD.societyRoadH * scaleY);
+            miniCtx.fillRect(0, WORLD.bazaarRoadY * scaleY, mw, WORLD.bazaarRoadH * scaleY);
+            miniCtx.fillRect(WORLD.mainAveX * scaleX, 460 * scaleY, WORLD.mainAveW * scaleX, 1340 * scaleY);
+
+            HOUSES.forEach(h => {
+                miniCtx.fillStyle = h.trimColor;
+                miniCtx.fillRect(h.x * scaleX, h.y * scaleY, h.w * scaleX, h.h * scaleY);
+            });
+
+            BAZAAR_SHOPS.forEach(s => {
+                miniCtx.fillStyle = s.neonColor;
+                miniCtx.fillRect(s.x * scaleX, s.y * scaleY, s.w * scaleX, s.h * scaleY);
+            });
+
+            if (aiEnabled) {
+                aiFriends.forEach(bot => {
+                    miniCtx.fillStyle = '#38bdf8';
+                    miniCtx.beginPath();
+                    miniCtx.arc(bot.x * scaleX, bot.y * scaleY, 2.2, 0, Math.PI * 2);
+                    miniCtx.fill();
+                });
+            }
+
+            // Remote Global Players (Bright Cyan/Yellow dots)
+            remotePlayers.forEach(rp => {
+                miniCtx.fillStyle = '#facc15';
+                miniCtx.beginPath();
+                miniCtx.arc((rp.x || 1600) * scaleX, (rp.y || 760) * scaleY, 3, 0, Math.PI * 2);
+                miniCtx.fill();
+            });
+
+            // Local Player
+            miniCtx.fillStyle = '#4ade80';
+            miniCtx.strokeStyle = '#ffffff';
+            miniCtx.lineWidth = 1.2;
+            miniCtx.beginPath();
+            miniCtx.arc(player.x * scaleX, player.y * scaleY, 3.6, 0, Math.PI * 2);
+            miniCtx.fill();
+            miniCtx.stroke();
+        }
+
+        function gameLoop(now) {
+            const dt = Math.min(0.05, (now - lastFrameTime) / 1000);
+            lastFrameTime = now;
+            const timeSec = now / 1000;
+
+            updateGame(dt);
+
+            ctx.fillStyle = '#06040d';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+            const shakeX = screenShake > 0 ? (Math.random() - 0.5) * screenShake : 0;
+            const shakeY = screenShake > 0 ? (Math.random() - 0.5) * screenShake : 0;
+            ctx.translate(-camera.x + shakeX, -camera.y + shakeY);
+
+            if (player.location === 'road') {
+                renderSocietyAndBazaarWorld(timeSec);
+                if (aiEnabled) {
+                    aiFriends.forEach(bot => {
+                        drawCharacter(bot.x, bot.y, bot.angle, bot.name, bot.color, bot.sparkler, bot.chatText, bot.chatTimer, false, false);
+                    });
+                }
+            } else if (player.location === 'chhat') {
+                renderSocietyChhat(timeSec);
+            } else {
+                renderHouseInterior(timeSec);
+            }
+
+            // Draw Real-Time Global Players in the same zone
+            remotePlayers.forEach(rp => {
+                if ((rp.location || 'road') === player.location) {
+                    drawCharacter(
+                        rp.x || 1600,
+                        rp.y || 760,
+                        rp.angle || 0,
+                        (rp.name || 'Dost') + ' 🌍',
+                        rp.color || '#38bdf8',
+                        rp.sparkler || false,
+                        rp.chatText || '',
+                        rp.chatText ? 2 : 0,
+                        false,
+                        rp.onScooty || false,
+                        rp.scootyNeon || '#06b6d4'
+                    );
+                }
+            });
+
+            // Draw Local Player
+            drawCharacter(
+                player.x,
+                player.y,
+                player.angle,
+                player.name + (player.onScooty ? ' 🛵' : ' (You)'),
+                player.color,
+                player.sparklerActive || player.selectedSlot === 4,
+                player.chatText,
+                player.chatTimer,
+                true,
+                player.onScooty && player.location === 'road',
+                player.scootyNeon
+            );
+
+            if (player.location === 'road' || player.location === 'chhat') {
+                ctx.save();
+                ctx.translate(mouse.worldX, mouse.worldY);
+                ctx.strokeStyle = 'rgba(251, 191, 36, 0.55)';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.arc(0, 0, 10, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            renderFireworksAndParticles(timeSec);
+            ctx.restore();
+
+            if (skyFlashAlpha > 0) {
+                ctx.save();
+                ctx.fillStyle = skyFlashColor;
+                ctx.globalAlpha = skyFlashAlpha;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.restore();
+            }
+
+            renderRadarMinimap();
+            requestAnimationFrame(gameLoop);
+        }
+
+        window.onload = function () {
+            updateHUD();
+            initGlobalPublicMultiplayer();
+            showBanner('🌍', 'Auto-Joined Global Public Server! Anyone with the link plays together!');
+            requestAnimationFrame(gameLoop);
+        };
+    </script>
+</body>
+</html>
